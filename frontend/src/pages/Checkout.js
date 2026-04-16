@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Truck, Lock, Sparkles } from 'lucide-react';
+import { ArrowLeft, Truck, Lock, Sparkles, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -16,16 +17,16 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
-  const { format, currency } = useCurrency();
+  const { format } = useCurrency();
 
+  const [countries, setCountries] = useState([]);
   const [form, setForm] = useState({
     fullName: user?.name || '',
     email: user?.email || '',
     address: '',
     city: '',
-    state: '',
     zip_code: '',
-    country: 'US'
+    country: 'portugal'
   });
   const [shipping, setShipping] = useState(null);
   const [shippingLoading, setShippingLoading] = useState(false);
@@ -35,31 +36,33 @@ export default function Checkout() {
   const afterDiscount = subtotal - discount;
   const total = afterDiscount + (shipping?.shipping_cost || 0);
 
+  useEffect(() => {
+    axios.get(`${API}/shipping/countries`)
+      .then(res => setCountries(res.data))
+      .catch(() => {});
+  }, []);
+
+  // Auto-calculate shipping when country changes
+  useEffect(() => {
+    if (form.country) {
+      setShippingLoading(true);
+      axios.post(`${API}/shipping/calculate`, { country: form.country, zip_code: form.zip_code || '' })
+        .then(res => setShipping(res.data))
+        .catch(() => setShipping(null))
+        .finally(() => setShippingLoading(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.country]);
+
   const handleChange = (e) => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  const calculateShipping = async () => {
-    if (!form.zip_code || form.zip_code.length < 5) {
-      toast.error('Please enter a valid zip code');
-      return;
-    }
-    setShippingLoading(true);
-    try {
-      const { data } = await axios.post(`${API}/shipping/calculate`, { zip_code: form.zip_code });
-      setShipping(data);
-    } catch {
-      toast.error('Failed to calculate shipping');
-    } finally {
-      setShippingLoading(false);
-    }
-  };
-
   const handleCheckout = async () => {
-    if (!form.fullName || !form.email || !form.address || !form.city || !form.zip_code) {
+    if (!form.fullName || !form.email || !form.address || !form.city || !form.country) {
       toast.error('Please fill in all required fields');
       return;
     }
     if (!shipping) {
-      toast.error('Please calculate shipping first');
+      toast.error('Please select a country for shipping');
       return;
     }
     setCheckoutLoading(true);
@@ -131,36 +134,41 @@ export default function Checkout() {
                   <Input data-testid="checkout-city" name="city" value={form.city} onChange={handleChange} className="bg-[#09090B] border-[#27272A] text-white" required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[#A1A1AA] text-xs">State</Label>
-                  <Input data-testid="checkout-state" name="state" value={form.state} onChange={handleChange} className="bg-[#09090B] border-[#27272A] text-white" />
+                  <Label className="text-[#A1A1AA] text-xs">Postal Code</Label>
+                  <Input data-testid="checkout-zip" name="zip_code" value={form.zip_code} onChange={handleChange} className="bg-[#09090B] border-[#27272A] text-white" placeholder="e.g. 4505-609" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[#A1A1AA] text-xs">Zip Code *</Label>
-                  <div className="flex gap-2">
-                    <Input data-testid="checkout-zip" name="zip_code" value={form.zip_code} onChange={handleChange} className="bg-[#09090B] border-[#27272A] text-white" placeholder="e.g. 90210" required />
-                    <Button
-                      data-testid="calc-shipping-btn"
-                      onClick={calculateShipping}
-                      disabled={shippingLoading}
-                      variant="outline"
-                      className="shrink-0 border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10 font-body text-xs"
-                    >
-                      {shippingLoading ? '...' : 'Calculate'}
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[#A1A1AA] text-xs">Country</Label>
-                  <Input data-testid="checkout-country" name="country" value={form.country} onChange={handleChange} className="bg-[#09090B] border-[#27272A] text-white" />
+                <div className="sm:col-span-2 space-y-1.5">
+                  <Label className="text-[#A1A1AA] text-xs">Country *</Label>
+                  <Select value={form.country} onValueChange={v => setForm(prev => ({...prev, country: v}))}>
+                    <SelectTrigger data-testid="checkout-country" className="bg-[#09090B] border-[#27272A] text-white">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#18181B] border-[#27272A] max-h-60">
+                      {countries.map(c => (
+                        <SelectItem key={c.value} value={c.value} className="text-white hover:bg-[#27272A]">
+                          <span className="flex items-center justify-between w-full">
+                            {c.label}
+                            <span className="text-[#A1A1AA] text-xs ml-2">{format(c.cost)}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               {shipping && (
-                <div data-testid="shipping-result" className="mt-4 flex items-center gap-2 p-3 bg-[#09090B] rounded-lg border border-[#27272A]">
+                <div data-testid="shipping-result" className="mt-4 flex items-center gap-3 p-3 bg-[#09090B] rounded-lg border border-[#27272A]">
                   <Truck className="w-4 h-4 text-[#D4AF37] shrink-0" />
-                  <div className="text-sm font-body">
-                    <span className="text-white">{format(shipping.shipping_cost)}</span>
-                    <span className="text-[#A1A1AA] ml-2">Estimated: {shipping.estimate}</span>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-body text-white">{shipping.zone} Shipping</span>
+                      <span className="text-sm font-body text-[#D4AF37] font-medium">{format(shipping.shipping_cost)}</span>
+                    </div>
+                    <p className="text-xs font-body text-[#A1A1AA] mt-0.5">
+                      <MapPin className="w-3 h-3 inline mr-1" />
+                      Estimated: {shipping.estimate} from Sanguedo, Portugal
+                    </p>
                   </div>
                 </div>
               )}

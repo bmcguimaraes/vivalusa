@@ -140,18 +140,103 @@ class VivaLusaAPITester:
         self.log_test("POST /api/auth/logout", success)
 
     def test_shipping_api(self):
-        """Test shipping calculation"""
-        print("\n🚚 Testing Shipping API...")
+        """Test European shipping calculation system"""
+        print("\n🚚 Testing European Shipping API...")
         
-        shipping_data = {"zip_code": "90210"}
-        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 200, shipping_data)
+        # Test GET /api/shipping/countries
+        success, response = self.test_api_endpoint('GET', 'shipping/countries', 200)
+        if success:
+            countries = response.json()
+            country_count = len(countries)
+            has_portugal = any(c['value'] == 'portugal' for c in countries)
+            has_spain = any(c['value'] == 'spain' for c in countries)
+            has_france = any(c['value'] == 'france' for c in countries)
+            has_uk = any(c['value'] == 'united kingdom' for c in countries)
+            
+            self.log_test("GET /api/shipping/countries", 
+                         country_count >= 30 and has_portugal and has_spain and has_france and has_uk,
+                         f"Found {country_count} countries, Portugal: {has_portugal}, Spain: {has_spain}, France: {has_france}, UK: {has_uk}")
+        else:
+            self.log_test("GET /api/shipping/countries", False, f"Status: {response.status_code}")
+        
+        # Test Portugal (Domestic zone - €3.99)
+        portugal_data = {"country": "portugal", "zip_code": "4505-609"}
+        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 200, portugal_data)
         if success:
             shipping_info = response.json()
-            has_cost = 'shipping_cost' in shipping_info
+            correct_cost = shipping_info.get('shipping_cost') == 3.99
+            correct_zone = shipping_info.get('zone') == 'Domestic'
             has_estimate = 'estimate' in shipping_info
-            self.log_test("POST /api/shipping/calculate", has_cost and has_estimate, f"Response: {shipping_info}")
+            self.log_test("POST /api/shipping/calculate (Portugal)", 
+                         correct_cost and correct_zone and has_estimate,
+                         f"Cost: €{shipping_info.get('shipping_cost')}, Zone: {shipping_info.get('zone')}")
         else:
-            self.log_test("POST /api/shipping/calculate", False, f"Status: {response.status_code}")
+            self.log_test("POST /api/shipping/calculate (Portugal)", False, f"Status: {response.status_code}")
+        
+        # Test Spain (Iberian zone - €6.99)
+        spain_data = {"country": "spain", "zip_code": ""}
+        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 200, spain_data)
+        if success:
+            shipping_info = response.json()
+            correct_cost = shipping_info.get('shipping_cost') == 6.99
+            correct_zone = shipping_info.get('zone') == 'Iberian'
+            self.log_test("POST /api/shipping/calculate (Spain)", 
+                         correct_cost and correct_zone,
+                         f"Cost: €{shipping_info.get('shipping_cost')}, Zone: {shipping_info.get('zone')}")
+        else:
+            self.log_test("POST /api/shipping/calculate (Spain)", False, f"Status: {response.status_code}")
+        
+        # Test France (Western EU zone - €9.99)
+        france_data = {"country": "france", "zip_code": ""}
+        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 200, france_data)
+        if success:
+            shipping_info = response.json()
+            correct_cost = shipping_info.get('shipping_cost') == 9.99
+            correct_zone = shipping_info.get('zone') == 'Western EU'
+            self.log_test("POST /api/shipping/calculate (France)", 
+                         correct_cost and correct_zone,
+                         f"Cost: €{shipping_info.get('shipping_cost')}, Zone: {shipping_info.get('zone')}")
+        else:
+            self.log_test("POST /api/shipping/calculate (France)", False, f"Status: {response.status_code}")
+        
+        # Test United Kingdom (UK zone - €14.99)
+        uk_data = {"country": "united kingdom", "zip_code": ""}
+        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 200, uk_data)
+        if success:
+            shipping_info = response.json()
+            correct_cost = shipping_info.get('shipping_cost') == 14.99
+            correct_zone = shipping_info.get('zone') == 'UK'
+            self.log_test("POST /api/shipping/calculate (United Kingdom)", 
+                         correct_cost and correct_zone,
+                         f"Cost: €{shipping_info.get('shipping_cost')}, Zone: {shipping_info.get('zone')}")
+        else:
+            self.log_test("POST /api/shipping/calculate (United Kingdom)", False, f"Status: {response.status_code}")
+        
+        # Test Non-European country (should return 400 error)
+        us_data = {"country": "united states", "zip_code": "90210"}
+        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 400, us_data)
+        if success:
+            error_info = response.json()
+            has_europe_error = 'Europe' in error_info.get('detail', '')
+            self.log_test("POST /api/shipping/calculate (Non-European - US)", 
+                         has_europe_error,
+                         f"Error message: {error_info.get('detail', 'No detail')}")
+        else:
+            self.log_test("POST /api/shipping/calculate (Non-European - US)", False, 
+                         f"Expected 400, got {response.status_code}")
+        
+        # Test another non-European country
+        japan_data = {"country": "japan", "zip_code": ""}
+        success, response = self.test_api_endpoint('POST', 'shipping/calculate', 400, japan_data)
+        if success:
+            error_info = response.json()
+            has_europe_error = 'Europe' in error_info.get('detail', '')
+            self.log_test("POST /api/shipping/calculate (Non-European - Japan)", 
+                         has_europe_error,
+                         f"Error message: {error_info.get('detail', 'No detail')}")
+        else:
+            self.log_test("POST /api/shipping/calculate (Non-European - Japan)", False, 
+                         f"Expected 400, got {response.status_code}")
 
     def test_admin_api(self):
         """Test admin-only endpoints"""
@@ -284,7 +369,7 @@ class VivaLusaAPITester:
             print("⚠️ Skipping checkout tests - no products available")
             return
 
-        # Test checkout session creation
+        # Test checkout session creation with European shipping
         checkout_data = {
             "items": [
                 {
@@ -294,11 +379,11 @@ class VivaLusaAPITester:
             ],
             "shipping_address": {
                 "full_name": "Test User",
-                "address": "123 Test St",
-                "city": "Los Angeles",
-                "state": "CA",
-                "zip_code": "90210",
-                "country": "US"
+                "address": "Rua de Teste 123",
+                "city": "Sanguedo",
+                "state": "",
+                "zip_code": "4505-609",
+                "country": "portugal"
             },
             "origin_url": self.base_url,
             "guest_email": "test@example.com"

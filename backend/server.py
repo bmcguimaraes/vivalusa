@@ -171,7 +171,8 @@ class ProductUpdate(BaseModel):
     featured: Optional[bool] = None
 
 class ShippingRequest(BaseModel):
-    zip_code: str
+    country: str
+    zip_code: str = ""
 
 class CheckoutRequest(BaseModel):
     items: List[Dict]
@@ -328,28 +329,75 @@ async def delete_product(product_id: str, request: Request):
     return {"message": "Product deleted"}
 
 # ─── SHIPPING CALCULATOR ───
+# Shipping from Sanguedo, Portugal (4505-609)
+SHIPPING_ZONES = {
+    "portugal": {"cost": 3.99, "estimate": "1-2 business days", "zone": "Domestic"},
+    "spain": {"cost": 6.99, "estimate": "2-4 business days", "zone": "Iberian"},
+    "france": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "germany": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "italy": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "netherlands": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "belgium": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "luxembourg": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "austria": {"cost": 9.99, "estimate": "3-5 business days", "zone": "Western EU"},
+    "switzerland": {"cost": 11.99, "estimate": "4-6 business days", "zone": "Western EU"},
+    "ireland": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Atlantic"},
+    "united kingdom": {"cost": 14.99, "estimate": "5-8 business days", "zone": "UK"},
+    "uk": {"cost": 14.99, "estimate": "5-8 business days", "zone": "UK"},
+    "denmark": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Northern EU"},
+    "sweden": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Northern EU"},
+    "norway": {"cost": 14.99, "estimate": "5-8 business days", "zone": "Northern EU"},
+    "finland": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Northern EU"},
+    "poland": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "czech republic": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "czechia": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "hungary": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "romania": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Eastern EU"},
+    "bulgaria": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Eastern EU"},
+    "croatia": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "slovenia": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "slovakia": {"cost": 12.99, "estimate": "4-7 business days", "zone": "Eastern EU"},
+    "greece": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Southern EU"},
+    "malta": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Southern EU"},
+    "cyprus": {"cost": 14.99, "estimate": "6-10 business days", "zone": "Southern EU"},
+    "estonia": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Baltic"},
+    "latvia": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Baltic"},
+    "lithuania": {"cost": 12.99, "estimate": "5-8 business days", "zone": "Baltic"},
+    "iceland": {"cost": 16.99, "estimate": "7-12 business days", "zone": "Nordic"},
+}
+
+EUROPEAN_COUNTRIES = list(SHIPPING_ZONES.keys())
+
 @api_router.post("/shipping/calculate")
 async def calculate_shipping(req: ShippingRequest):
-    store_zip = os.environ.get("STORE_ZIP", "10001")
-    try:
-        user_zip = int(req.zip_code[:5])
-        store_zip_int = int(store_zip[:5])
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid zip code")
-    distance_factor = abs(user_zip - store_zip_int)
-    if distance_factor < 500:
-        shipping_cost = 5.99
-        estimate = "2-3 business days"
-    elif distance_factor < 5000:
-        shipping_cost = 9.99
-        estimate = "4-6 business days"
-    elif distance_factor < 50000:
-        shipping_cost = 14.99
-        estimate = "5-8 business days"
-    else:
-        shipping_cost = 19.99
-        estimate = "7-12 business days"
-    return {"shipping_cost": shipping_cost, "estimate": estimate, "zip_code": req.zip_code}
+    country = req.country.lower().strip()
+    zone = SHIPPING_ZONES.get(country)
+    if not zone:
+        raise HTTPException(status_code=400, detail=f"We currently only ship within Europe. '{req.country}' is not in our delivery area.")
+    return {
+        "shipping_cost": zone["cost"],
+        "estimate": zone["estimate"],
+        "zone": zone["zone"],
+        "country": req.country,
+        "zip_code": req.zip_code
+    }
+
+@api_router.get("/shipping/countries")
+async def get_shipping_countries():
+    countries = []
+    seen = set()
+    for name, info in SHIPPING_ZONES.items():
+        display = name.title()
+        if display == "Uk":
+            display = "United Kingdom"
+        if display == "Czechia":
+            continue
+        if display.lower() in seen:
+            continue
+        seen.add(display.lower())
+        countries.append({"value": name, "label": display, "zone": info["zone"], "cost": info["cost"]})
+    countries.sort(key=lambda c: c["label"])
+    return countries
 
 # ─── IMAGE UPLOAD ───
 @api_router.post("/upload/image")
@@ -477,24 +525,14 @@ async def create_checkout_session(req: CheckoutRequest, request: Request):
         discount = round(total * 0.05, 2)
         total = round(total - discount, 2)
 
-    # Calculate shipping
+    # Calculate shipping based on country
     shipping_cost = 0.0
-    if req.shipping_address.get("zip_code"):
-        store_zip = os.environ.get("STORE_ZIP", "10001")
-        try:
-            user_zip = int(req.shipping_address["zip_code"][:5])
-            store_zip_int = int(store_zip[:5])
-            distance_factor = abs(user_zip - store_zip_int)
-            if distance_factor < 500:
-                shipping_cost = 5.99
-            elif distance_factor < 5000:
-                shipping_cost = 9.99
-            elif distance_factor < 50000:
-                shipping_cost = 14.99
-            else:
-                shipping_cost = 19.99
-        except ValueError:
-            shipping_cost = 9.99
+    country = req.shipping_address.get("country", "").lower().strip()
+    zone_info = SHIPPING_ZONES.get(country)
+    if zone_info:
+        shipping_cost = zone_info["cost"]
+    else:
+        shipping_cost = 14.99  # Default for unknown European countries
 
     final_total = round(total + shipping_cost, 2)
 
