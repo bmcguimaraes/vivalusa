@@ -1,54 +1,56 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Plus, Pencil, Trash2, ArrowLeft, Package, ShoppingBag, Save, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Package, ShoppingBag, Save, Upload, BarChart3, AlertTriangle, TrendingUp, Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
 const CATEGORIES = ['Skincare', 'Makeup', 'Fragrance', 'Haircare', 'Body'];
-
 const emptyProduct = { name: '', description: '', price: '', category: 'Skincare', image_url: '', stock: '100', featured: false };
 
 export default function Admin() {
   const { user, loading: authLoading } = useAuth();
+  const { format } = useCurrency();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('products');
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyProduct);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (!authLoading && (!user || user.role !== 'admin')) {
-      navigate('/');
-    }
+    if (!authLoading && (!user || user.role !== 'admin')) navigate('/');
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (user?.role === 'admin') {
-      fetchData();
-    }
+    if (user?.role === 'admin') fetchData();
   }, [user]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [prodRes, orderRes] = await Promise.all([
+      const [prodRes, orderRes, analyticsRes] = await Promise.all([
         axios.get(`${API}/products`),
-        axios.get(`${API}/admin/orders`, { withCredentials: true })
+        axios.get(`${API}/admin/orders`, { withCredentials: true }),
+        axios.get(`${API}/admin/analytics`, { withCredentials: true })
       ]);
       setProducts(prodRes.data);
       setOrders(orderRes.data);
+      setAnalytics(analyticsRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -56,24 +58,32 @@ export default function Admin() {
     }
   };
 
-  const openCreate = () => {
-    setEditId(null);
-    setForm(emptyProduct);
+  const openCreate = () => { setEditId(null); setForm(emptyProduct); setModalOpen(true); };
+  const openEdit = (p) => {
+    setEditId(p.id);
+    setForm({ name: p.name, description: p.description, price: String(p.price), category: p.category, image_url: p.image_url, stock: String(p.stock), featured: p.featured || false });
     setModalOpen(true);
   };
 
-  const openEdit = (product) => {
-    setEditId(product.id);
-    setForm({
-      name: product.name,
-      description: product.description,
-      price: String(product.price),
-      category: product.category,
-      image_url: product.image_url,
-      stock: String(product.stock),
-      featured: product.featured || false
-    });
-    setModalOpen(true);
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await axios.post(`${API}/upload/image`, formData, {
+        withCredentials: true,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const imageUrl = `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
+      setForm(prev => ({ ...prev, image_url: imageUrl }));
+      toast.success('Image uploaded');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -83,11 +93,7 @@ export default function Admin() {
     }
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        price: parseFloat(form.price),
-        stock: parseInt(form.stock) || 100,
-      };
+      const payload = { ...form, price: parseFloat(form.price), stock: parseInt(form.stock) || 100 };
       if (editId) {
         await axios.put(`${API}/admin/products/${editId}`, payload, { withCredentials: true });
         toast.success('Product updated');
@@ -110,9 +116,7 @@ export default function Admin() {
       await axios.delete(`${API}/admin/products/${productId}`, { withCredentials: true });
       toast.success('Product deleted');
       fetchData();
-    } catch {
-      toast.error('Failed to delete');
-    }
+    } catch { toast.error('Failed to delete'); }
   };
 
   if (authLoading || loading) {
@@ -140,24 +144,24 @@ export default function Admin() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-[#18181B] rounded-lg p-1 w-fit">
-          <button
-            data-testid="tab-products"
-            onClick={() => setTab('products')}
-            className={`px-4 py-2 rounded-md text-sm font-body transition-colors ${tab === 'products' ? 'bg-[#D4AF37] text-black' : 'text-[#A1A1AA] hover:text-white'}`}
-          >
-            <Package className="w-4 h-4 inline mr-1.5" />Products ({products.length})
-          </button>
-          <button
-            data-testid="tab-orders"
-            onClick={() => setTab('orders')}
-            className={`px-4 py-2 rounded-md text-sm font-body transition-colors ${tab === 'orders' ? 'bg-[#D4AF37] text-black' : 'text-[#A1A1AA] hover:text-white'}`}
-          >
-            <ShoppingBag className="w-4 h-4 inline mr-1.5" />Orders ({orders.length})
-          </button>
+        <div className="flex gap-1 mb-6 bg-[#18181B] rounded-lg p-1 w-fit overflow-x-auto">
+          {[
+            { id: 'products', icon: Package, label: `Products (${products.length})` },
+            { id: 'sales', icon: BarChart3, label: 'Sales & Stock' },
+            { id: 'orders', icon: ShoppingBag, label: `Orders (${orders.length})` },
+          ].map(t => (
+            <button
+              key={t.id}
+              data-testid={`tab-${t.id}`}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-body whitespace-nowrap transition-colors ${tab === t.id ? 'bg-[#D4AF37] text-black' : 'text-[#A1A1AA] hover:text-white'}`}
+            >
+              <t.icon className="w-4 h-4" />{t.label}
+            </button>
+          ))}
         </div>
 
-        {/* Products Tab */}
+        {/* ─── PRODUCTS TAB ─── */}
         {tab === 'products' && (
           <div className="grid gap-3">
             {products.map(p => (
@@ -165,9 +169,14 @@ export default function Admin() {
                 <img src={p.image_url} alt={p.name} className="w-14 h-18 object-cover rounded-md shrink-0" />
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-body text-white truncate">{p.name}</h3>
-                  <p className="text-xs text-[#A1A1AA] font-body">{p.category} &middot; Stock: {p.stock}</p>
+                  <p className="text-xs text-[#A1A1AA] font-body">{p.category}</p>
                 </div>
-                <span className="text-sm font-body text-[#D4AF37] shrink-0">${p.price.toFixed(2)}</span>
+                <div className="text-right shrink-0">
+                  <span className="text-sm font-body text-[#D4AF37] block">{format(p.price)}</span>
+                  <span className={`text-xs font-body ${p.stock < 20 ? 'text-amber-400' : 'text-[#A1A1AA]'}`}>
+                    Stock: {p.stock}
+                  </span>
+                </div>
                 <div className="flex gap-1 shrink-0">
                   <button data-testid={`edit-product-${p.id}`} onClick={() => openEdit(p)} className="p-2 text-[#A1A1AA] hover:text-white transition-colors">
                     <Pencil className="w-4 h-4" />
@@ -181,7 +190,129 @@ export default function Admin() {
           </div>
         )}
 
-        {/* Orders Tab */}
+        {/* ─── SALES & STOCK TAB ─── */}
+        {tab === 'sales' && analytics && (
+          <div className="space-y-6">
+            {/* Overview Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-4 h-4 text-[#D4AF37]" />
+                  <span className="text-xs font-body text-[#A1A1AA]">Total Revenue</span>
+                </div>
+                <p data-testid="total-revenue" className="font-heading text-2xl text-white">{format(analytics.total_revenue)}</p>
+              </div>
+              <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShoppingBag className="w-4 h-4 text-[#D4AF37]" />
+                  <span className="text-xs font-body text-[#A1A1AA]">Total Orders</span>
+                </div>
+                <p data-testid="total-orders" className="font-heading text-2xl text-white">{analytics.total_orders}</p>
+              </div>
+              <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package className="w-4 h-4 text-[#D4AF37]" />
+                  <span className="text-xs font-body text-[#A1A1AA]">Products</span>
+                </div>
+                <p data-testid="total-products" className="font-heading text-2xl text-white">{analytics.total_products}</p>
+              </div>
+              <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Boxes className="w-4 h-4 text-[#D4AF37]" />
+                  <span className="text-xs font-body text-[#A1A1AA]">Total Stock</span>
+                </div>
+                <p data-testid="total-stock" className="font-heading text-2xl text-white">{analytics.total_stock}</p>
+              </div>
+            </div>
+
+            {/* Stock by Category */}
+            <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6">
+              <h3 className="font-heading text-lg text-white mb-4">Stock by Category</h3>
+              <div className="space-y-4">
+                {Object.entries(analytics.category_stock).map(([cat, stock]) => (
+                  <div key={cat} data-testid={`stock-${cat.toLowerCase()}`}>
+                    <div className="flex justify-between text-sm font-body mb-1.5">
+                      <span className="text-white">{cat}</span>
+                      <span className="text-[#A1A1AA]">{stock} units</span>
+                    </div>
+                    <Progress
+                      value={Math.min((stock / analytics.total_stock) * 100, 100)}
+                      className="h-2 bg-[#27272A]"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Revenue by Category */}
+            {Object.keys(analytics.category_revenue).length > 0 && (
+              <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6">
+                <h3 className="font-heading text-lg text-white mb-4">Revenue by Category</h3>
+                <div className="space-y-3">
+                  {Object.entries(analytics.category_revenue).map(([cat, rev]) => (
+                    <div key={cat} className="flex justify-between items-center">
+                      <span className="text-sm font-body text-white">{cat}</span>
+                      <span className="text-sm font-body text-[#D4AF37]">{format(rev)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Low Stock Alerts */}
+            {analytics.low_stock_items.length > 0 && (
+              <div className="bg-[#18181B] border border-amber-500/20 rounded-xl p-6">
+                <h3 className="font-heading text-lg text-amber-400 mb-4 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" /> Low Stock Alerts
+                </h3>
+                <div className="space-y-2">
+                  {analytics.low_stock_items.map(item => (
+                    <div key={item.id} className="flex justify-between items-center text-sm font-body">
+                      <span className="text-white">{item.name}</span>
+                      <span className="text-amber-400 font-medium">{item.stock} left</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Inventory Table */}
+            <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6">
+              <h3 className="font-heading text-lg text-white mb-4">Full Inventory</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#27272A]">
+                      <th className="text-left text-xs font-body text-[#A1A1AA] pb-3 pr-4">Product</th>
+                      <th className="text-left text-xs font-body text-[#A1A1AA] pb-3 pr-4">Category</th>
+                      <th className="text-right text-xs font-body text-[#A1A1AA] pb-3 pr-4">Price</th>
+                      <th className="text-right text-xs font-body text-[#A1A1AA] pb-3">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map(p => (
+                      <tr key={p.id} data-testid={`inventory-${p.id}`} className="border-b border-[#27272A]/50">
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-3">
+                            <img src={p.image_url} alt={p.name} className="w-8 h-10 object-cover rounded" />
+                            <span className="text-sm font-body text-white">{p.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 text-sm font-body text-[#A1A1AA]">{p.category}</td>
+                        <td className="py-3 pr-4 text-right text-sm font-body text-[#D4AF37]">{format(p.price)}</td>
+                        <td className={`py-3 text-right text-sm font-body font-medium ${p.stock < 20 ? 'text-amber-400' : 'text-white'}`}>
+                          {p.stock}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── ORDERS TAB ─── */}
         {tab === 'orders' && (
           <div className="grid gap-3">
             {orders.length === 0 ? (
@@ -200,7 +331,7 @@ export default function Admin() {
                       <p className="text-sm text-white font-body">{o.items?.length || 0} item(s)</p>
                       <p className="text-xs text-[#A1A1AA] font-body">{o.shipping_address?.city}, {o.shipping_address?.zip_code}</p>
                     </div>
-                    <span className="text-lg font-body text-[#D4AF37]">${o.total?.toFixed(2)}</span>
+                    <span className="text-lg font-body text-[#D4AF37]">{format(o.total)}</span>
                   </div>
                 </div>
               ))
@@ -211,7 +342,7 @@ export default function Admin() {
 
       {/* Product Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-[#18181B] border-[#27272A] text-white" data-testid="product-modal">
+        <DialogContent className="sm:max-w-[520px] bg-[#18181B] border-[#27272A] text-white max-h-[90vh] overflow-y-auto" data-testid="product-modal">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl text-[#D4AF37]">
               {editId ? 'Edit Product' : 'New Product'}
@@ -228,11 +359,11 @@ export default function Admin() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-[#A1A1AA] text-xs">Price ($) *</Label>
+                <Label className="text-[#A1A1AA] text-xs">Price (EUR) *</Label>
                 <Input data-testid="product-price-input" type="number" step="0.01" value={form.price} onChange={e => setForm(p => ({...p, price: e.target.value}))} className="bg-[#09090B] border-[#27272A] text-white" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[#A1A1AA] text-xs">Stock</Label>
+                <Label className="text-[#A1A1AA] text-xs">Stock Quantity</Label>
                 <Input data-testid="product-stock-input" type="number" value={form.stock} onChange={e => setForm(p => ({...p, stock: e.target.value}))} className="bg-[#09090B] border-[#27272A] text-white" />
               </div>
             </div>
@@ -249,10 +380,49 @@ export default function Admin() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Image Upload */}
             <div className="space-y-1.5">
-              <Label className="text-[#A1A1AA] text-xs">Image URL</Label>
-              <Input data-testid="product-image-input" value={form.image_url} onChange={e => setForm(p => ({...p, image_url: e.target.value}))} className="bg-[#09090B] border-[#27272A] text-white" placeholder="https://..." />
+              <Label className="text-[#A1A1AA] text-xs">Product Image</Label>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <Input
+                    data-testid="product-image-input"
+                    value={form.image_url}
+                    onChange={e => setForm(p => ({...p, image_url: e.target.value}))}
+                    className="bg-[#09090B] border-[#27272A] text-white"
+                    placeholder="Image URL or upload below"
+                  />
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <Button
+                  data-testid="upload-image-btn"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  variant="outline"
+                  className="border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10 font-body text-xs shrink-0"
+                >
+                  {uploading ? (
+                    <div className="w-4 h-4 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <><Upload className="w-4 h-4 mr-1" />Upload</>
+                  )}
+                </Button>
+              </div>
+              {form.image_url && (
+                <div className="mt-2 relative w-20 h-24 rounded-md overflow-hidden border border-[#27272A]">
+                  <img src={form.image_url} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              )}
             </div>
+
             <div className="flex gap-3 pt-2">
               <Button data-testid="save-product-btn" onClick={handleSave} disabled={saving} className="flex-1 bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body">
                 <Save className="w-4 h-4 mr-1" /> {saving ? 'Saving...' : 'Save'}

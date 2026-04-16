@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
+import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { Toaster } from "@/components/ui/sonner";
 import Navbar from "@/components/Navbar";
 import CartDrawer from "@/components/CartDrawer";
@@ -18,6 +19,7 @@ function App() {
   return (
     <AuthProvider>
       <CartProvider>
+        <CurrencyProvider>
         <BrowserRouter>
           <div className="min-h-screen bg-[#09090B]">
             <Navbar />
@@ -35,6 +37,7 @@ function App() {
           </div>
           <Toaster richColors position="bottom-right" />
         </BrowserRouter>
+        </CurrencyProvider>
       </CartProvider>
     </AuthProvider>
   );

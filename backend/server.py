@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -17,6 +17,8 @@ import bcrypt
 import jwt
 import secrets
 from bson import ObjectId
+import requests as http_requests
+import time
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -30,6 +32,62 @@ JWT_ALGORITHM = "HS256"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ─── Object Storage ───
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "vivalusa"
+storage_key = None
+
+def init_storage():
+    global storage_key
+    if storage_key:
+        return storage_key
+    resp = http_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = http_requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str):
+    key = init_storage()
+    resp = http_requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+# ─── Currency Exchange ───
+_exchange_cache = {"rates": {}, "timestamp": 0}
+
+async def get_exchange_rates():
+    now = time.time()
+    if _exchange_cache["rates"] and (now - _exchange_cache["timestamp"]) < 3600:
+        return _exchange_cache["rates"]
+    try:
+        resp = http_requests.get("https://api.frankfurter.dev/v1/latest?base=EUR", timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        rates = data.get("rates", {})
+        rates["EUR"] = 1.0
+        _exchange_cache["rates"] = rates
+        _exchange_cache["timestamp"] = now
+        return rates
+    except Exception as e:
+        logger.error(f"Exchange rate fetch failed: {e}")
+        if _exchange_cache["rates"]:
+            return _exchange_cache["rates"]
+        return {"EUR": 1.0, "USD": 1.08, "GBP": 0.86}
 
 # ─── Password Helpers ───
 def hash_password(password: str) -> str:
@@ -96,6 +154,7 @@ class ProductCreate(BaseModel):
     name: str
     description: str
     price: float
+    currency: str = "EUR"
     category: str
     image_url: str
     stock: int = 100
@@ -105,6 +164,7 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
+    currency: Optional[str] = None
     category: Optional[str] = None
     image_url: Optional[str] = None
     stock: Optional[int] = None
@@ -290,6 +350,102 @@ async def calculate_shipping(req: ShippingRequest):
         shipping_cost = 19.99
         estimate = "7-12 business days"
     return {"shipping_cost": shipping_cost, "estimate": estimate, "zip_code": req.zip_code}
+
+# ─── IMAGE UPLOAD ───
+@api_router.post("/upload/image")
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only image files (JPEG, PNG, WebP, GIF) allowed")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    path = f"{APP_NAME}/products/{uuid.uuid4()}.{ext}"
+
+    try:
+        result = put_object(path, data, file.content_type or "image/png")
+        await db.files.insert_one({
+            "id": str(uuid.uuid4()),
+            "storage_path": result["path"],
+            "original_filename": file.filename,
+            "content_type": file.content_type,
+            "size": result.get("size", len(data)),
+            "is_deleted": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        return {"path": result["path"], "url": f"/api/files/{result['path']}"}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+@api_router.get("/files/{path:path}")
+async def serve_file(path: str):
+    record = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        data, content_type = get_object(path)
+        return Response(content=data, media_type=record.get("content_type", content_type))
+    except Exception as e:
+        logger.error(f"File serve failed: {e}")
+        raise HTTPException(status_code=404, detail="File not found")
+
+# ─── CURRENCY ───
+@api_router.get("/currency/rates")
+async def currency_rates():
+    rates = await get_exchange_rates()
+    return {"base": "EUR", "rates": rates}
+
+# ─── ADMIN ANALYTICS ───
+@api_router.get("/admin/analytics")
+async def get_analytics(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Total products and stock
+    products = await db.products.find({}, {"_id": 0, "id": 1, "name": 1, "stock": 1, "price": 1, "category": 1}).to_list(500)
+    total_stock = sum(p.get("stock", 0) for p in products)
+    low_stock = [p for p in products if p.get("stock", 0) < 20]
+
+    # Orders and revenue
+    orders = await db.orders.find({}, {"_id": 0}).to_list(1000)
+    total_revenue = sum(o.get("total", 0) for o in orders)
+    total_orders = len(orders)
+
+    # Revenue by category from order items
+    category_revenue = {}
+    for order in orders:
+        for item in order.get("items", []):
+            cat = item.get("category", "Unknown")
+            category_revenue[cat] = category_revenue.get(cat, 0) + (item.get("price", 0) * item.get("quantity", 1))
+
+    # Recent orders (last 10)
+    recent_orders = sorted(orders, key=lambda o: o.get("created_at", ""), reverse=True)[:10]
+
+    # Stock by category
+    category_stock = {}
+    for p in products:
+        cat = p.get("category", "Unknown")
+        category_stock[cat] = category_stock.get(cat, 0) + p.get("stock", 0)
+
+    return {
+        "total_products": len(products),
+        "total_stock": total_stock,
+        "low_stock_items": low_stock,
+        "total_orders": total_orders,
+        "total_revenue": round(total_revenue, 2),
+        "category_revenue": category_revenue,
+        "category_stock": category_stock,
+        "recent_orders": recent_orders
+    }
 
 # ─── CHECKOUT / STRIPE ───
 @api_router.post("/checkout/session")
@@ -568,8 +724,15 @@ async def startup():
     await db.products.create_index("id", unique=True)
     await db.payment_transactions.create_index("session_id")
     await db.orders.create_index("user_id")
+    await db.files.create_index("storage_path")
     await seed_admin()
     await seed_products()
+    # Init object storage
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
     # Write test credentials
     creds_dir = Path("/app/memory")
     creds_dir.mkdir(exist_ok=True)

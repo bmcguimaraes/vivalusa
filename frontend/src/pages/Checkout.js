@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -15,6 +16,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
+  const { format, currency } = useCurrency();
 
   const [form, setForm] = useState({
     fullName: user?.name || '',
@@ -157,7 +159,7 @@ export default function Checkout() {
                 <div data-testid="shipping-result" className="mt-4 flex items-center gap-2 p-3 bg-[#09090B] rounded-lg border border-[#27272A]">
                   <Truck className="w-4 h-4 text-[#D4AF37] shrink-0" />
                   <div className="text-sm font-body">
-                    <span className="text-white">${shipping.shipping_cost.toFixed(2)}</span>
+                    <span className="text-white">{format(shipping.shipping_cost)}</span>
                     <span className="text-[#A1A1AA] ml-2">Estimated: {shipping.estimate}</span>
                   </div>
                 </div>
@@ -178,7 +180,7 @@ export default function Checkout() {
                       <p className="text-sm text-white font-body truncate">{item.name}</p>
                       <p className="text-xs text-[#A1A1AA] font-body">Qty: {item.quantity}</p>
                     </div>
-                    <span className="text-sm text-white font-body">${(item.price * item.quantity).toFixed(2)}</span>
+                    <span className="text-sm text-white font-body">{format(item.price * item.quantity)}</span>
                   </div>
                 ))}
               </div>
@@ -186,23 +188,23 @@ export default function Checkout() {
               <div className="border-t border-[#27272A] pt-4 space-y-2">
                 <div className="flex justify-between text-sm font-body">
                   <span className="text-[#A1A1AA]">Subtotal</span>
-                  <span className="text-white">${subtotal.toFixed(2)}</span>
+                  <span className="text-white">{format(subtotal)}</span>
                 </div>
                 {user && discount > 0 && (
                   <div className="flex justify-between text-sm font-body">
                     <span className="text-[#D4AF37] flex items-center gap-1"><Sparkles className="w-3 h-3" />Member Discount</span>
-                    <span className="text-[#D4AF37]">-${discount.toFixed(2)}</span>
+                    <span className="text-[#D4AF37]">-{format(discount)}</span>
                   </div>
                 )}
                 {shipping && (
                   <div className="flex justify-between text-sm font-body">
                     <span className="text-[#A1A1AA]">Shipping</span>
-                    <span className="text-white">${shipping.shipping_cost.toFixed(2)}</span>
+                    <span className="text-white">{format(shipping.shipping_cost)}</span>
                   </div>
                 )}
                 <div className="border-t border-[#27272A] pt-2 flex justify-between font-body font-medium">
                   <span className="text-white">Total</span>
-                  <span className="text-[#D4AF37] text-lg">${total.toFixed(2)}</span>
+                  <span className="text-[#D4AF37] text-lg">{format(total)}</span>
                 </div>
               </div>
 
@@ -227,7 +229,7 @@ export default function Checkout() {
                 ) : (
                   <span className="flex items-center gap-2">
                     <Lock className="w-4 h-4" />
-                    Pay ${total.toFixed(2)}
+                    Pay {format(total)}
                   </span>
                 )}
               </Button>
@@ -244,7 +246,7 @@ export default function Checkout() {
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#18181B]/95 backdrop-blur-xl border-t border-[#27272A] px-4 py-3 flex items-center justify-between">
         <div>
           <p className="text-xs text-[#A1A1AA] font-body">Total</p>
-          <p className="text-lg text-[#D4AF37] font-body font-medium">${total.toFixed(2)}</p>
+          <p className="text-lg text-[#D4AF37] font-body font-medium">{format(total)}</p>
         </div>
         <Button
           data-testid="mobile-place-order-btn"

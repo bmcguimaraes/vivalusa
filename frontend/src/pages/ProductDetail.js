@@ -5,6 +5,7 @@ import { ArrowLeft, ShoppingBag, Minus, Plus, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -14,6 +15,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addItem } = useCart();
   const { user } = useAuth();
+  const { format } = useCurrency();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
@@ -73,12 +75,12 @@ export default function ProductDetail() {
           <div className="flex items-center gap-3 mb-6">
             {user ? (
               <>
-                <span className="font-body text-2xl font-medium text-[#D4AF37]">${discountedPrice.toFixed(2)}</span>
-                <span className="font-body text-lg text-[#A1A1AA] line-through">${product.price.toFixed(2)}</span>
+                <span className="font-body text-2xl font-medium text-[#D4AF37]">{format(discountedPrice)}</span>
+                <span className="font-body text-lg text-[#A1A1AA] line-through">{format(product.price)}</span>
                 <span className="px-2 py-0.5 bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded text-xs text-[#D4AF37] font-body">5% Member Discount</span>
               </>
             ) : (
-              <span className="font-body text-2xl font-medium text-[#D4AF37]">${product.price.toFixed(2)}</span>
+              <span className="font-body text-2xl font-medium text-[#D4AF37]">{format(product.price)}</span>
             )}
           </div>
 

@@ -198,6 +198,84 @@ class VivaLusaAPITester:
         else:
             self.log_test("GET /api/admin/orders", False, f"Status: {response.status_code}")
 
+    def test_currency_api(self):
+        """Test currency exchange rates API"""
+        print("\n💱 Testing Currency API...")
+        
+        # Test GET /api/currency/rates
+        success, response = self.test_api_endpoint('GET', 'currency/rates', 200)
+        if success:
+            rates_data = response.json()
+            has_base = rates_data.get('base') == 'EUR'
+            has_rates = 'rates' in rates_data and isinstance(rates_data['rates'], dict)
+            has_eur = rates_data.get('rates', {}).get('EUR') == 1.0
+            has_usd = 'USD' in rates_data.get('rates', {})
+            has_gbp = 'GBP' in rates_data.get('rates', {})
+            
+            all_checks = has_base and has_rates and has_eur and has_usd and has_gbp
+            self.log_test("GET /api/currency/rates", all_checks, 
+                         f"Base: {rates_data.get('base')}, Rates count: {len(rates_data.get('rates', {}))}")
+        else:
+            self.log_test("GET /api/currency/rates", False, f"Status: {response.status_code}")
+
+    def test_admin_analytics_api(self):
+        """Test admin analytics endpoint"""
+        print("\n📊 Testing Admin Analytics API...")
+        
+        if not hasattr(self, 'admin_cookies'):
+            print("⚠️ Skipping analytics tests - no admin session")
+            return
+
+        # Test GET /api/admin/analytics
+        success, response = self.test_api_endpoint('GET', 'admin/analytics', 200, cookies=self.admin_cookies)
+        if success:
+            analytics = response.json()
+            required_fields = ['total_products', 'total_stock', 'total_orders', 'total_revenue', 
+                             'category_stock', 'category_revenue', 'low_stock_items']
+            
+            has_all_fields = all(field in analytics for field in required_fields)
+            has_valid_totals = (isinstance(analytics.get('total_products'), int) and 
+                              isinstance(analytics.get('total_stock'), int) and
+                              isinstance(analytics.get('total_orders'), int) and
+                              isinstance(analytics.get('total_revenue'), (int, float)))
+            
+            self.log_test("GET /api/admin/analytics", has_all_fields and has_valid_totals,
+                         f"Products: {analytics.get('total_products')}, Stock: {analytics.get('total_stock')}")
+        else:
+            self.log_test("GET /api/admin/analytics", False, f"Status: {response.status_code}")
+
+    def test_image_upload_api(self):
+        """Test image upload endpoint"""
+        print("\n🖼️ Testing Image Upload API...")
+        
+        if not hasattr(self, 'admin_cookies'):
+            print("⚠️ Skipping image upload tests - no admin session")
+            return
+
+        # Create a simple test image (1x1 PNG)
+        import base64
+        # Minimal 1x1 PNG image in base64
+        png_data = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAHGfEUAAA==')
+        
+        # Test image upload
+        files = {'file': ('test.png', png_data, 'image/png')}
+        
+        try:
+            url = f"{self.api_url}/upload/image"
+            response = requests.post(url, files=files, cookies=self.admin_cookies)
+            
+            success = response.status_code == 200
+            if success:
+                upload_data = response.json()
+                has_path = 'path' in upload_data
+                has_url = 'url' in upload_data
+                self.log_test("POST /api/upload/image", has_path and has_url,
+                             f"Upload path: {upload_data.get('path', 'N/A')}")
+            else:
+                self.log_test("POST /api/upload/image", False, f"Status: {response.status_code}")
+        except Exception as e:
+            self.log_test("POST /api/upload/image", False, f"Error: {str(e)}")
+
     def test_checkout_api(self):
         """Test checkout session creation"""
         print("\n💳 Testing Checkout API...")
@@ -243,7 +321,10 @@ class VivaLusaAPITester:
         self.test_products_api()
         self.test_auth_api()
         self.test_shipping_api()
+        self.test_currency_api()
         self.test_admin_api()
+        self.test_admin_analytics_api()
+        self.test_image_upload_api()
         self.test_checkout_api()
         
         # Print summary

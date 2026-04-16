@@ -4,6 +4,7 @@ import { ShoppingBag, User, Search, Menu, X, LogOut, Shield, Package } from 'luc
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import AuthModal from '@/components/AuthModal';
+import CurrencySelector from '@/components/CurrencySelector';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +56,9 @@ export default function Navbar() {
 
             {/* Right Icons */}
             <div className="flex items-center gap-2">
+              <div className="hidden sm:block">
+                <CurrencySelector />
+              </div>
               <button
                 data-testid="nav-search-btn"
                 onClick={() => navigate('/shop')}

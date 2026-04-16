@@ -3,12 +3,14 @@ import { X, Minus, Plus, ShoppingBag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function CartDrawer() {
   const { items, isOpen, setIsOpen, removeItem, updateQuantity, subtotal, totalItems } = useCart();
   const { user } = useAuth();
+  const { format } = useCurrency();
   const navigate = useNavigate();
 
   const discount = user ? subtotal * 0.05 : 0;
@@ -54,7 +56,7 @@ export default function CartDrawer() {
                     <img src={item.image_url} alt={item.name} className="w-16 h-20 object-cover rounded-md" />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-body text-sm text-white truncate">{item.name}</h3>
-                      <p className="font-body text-xs text-[#D4AF37] mt-0.5">${item.price.toFixed(2)}</p>
+                      <p className="font-body text-xs text-[#D4AF37] mt-0.5">{format(item.price)}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           data-testid={`qty-minus-${item.product_id}`}
@@ -81,7 +83,7 @@ export default function CartDrawer() {
                       >
                         <X className="w-4 h-4" />
                       </button>
-                      <span className="text-sm font-body text-white">${(item.price * item.quantity).toFixed(2)}</span>
+                      <span className="text-sm font-body text-white">{format(item.price * item.quantity)}</span>
                     </div>
                   </div>
                 ))}
@@ -94,12 +96,12 @@ export default function CartDrawer() {
             <div className="px-6 py-4 border-t border-white/10 space-y-3">
               <div className="flex justify-between text-sm font-body">
                 <span className="text-[#A1A1AA]">Subtotal</span>
-                <span className="text-white">${subtotal.toFixed(2)}</span>
+                <span className="text-white">{format(subtotal)}</span>
               </div>
               {user && discount > 0 && (
                 <div className="flex justify-between text-sm font-body">
                   <span className="text-[#D4AF37]">Member Discount (5%)</span>
-                  <span className="text-[#D4AF37]">-${discount.toFixed(2)}</span>
+                  <span className="text-[#D4AF37]">-{format(discount)}</span>
                 </div>
               )}
               {!user && (
@@ -107,7 +109,7 @@ export default function CartDrawer() {
               )}
               <div className="flex justify-between text-base font-body font-medium">
                 <span className="text-white">Total</span>
-                <span className="text-[#D4AF37]">${total.toFixed(2)}</span>
+                <span className="text-[#D4AF37]">{format(total)}</span>
               </div>
               <Button
                 data-testid="checkout-btn"

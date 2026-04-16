@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingBag, Plus } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { toast } from 'sonner';
 
 export default function ProductCard({ product, gridMode }) {
   const [hovered, setHovered] = useState(false);
   const { addItem } = useCart();
+  const { format } = useCurrency();
   const navigate = useNavigate();
 
   const handleAdd = (e) => {
@@ -46,7 +48,7 @@ export default function ProductCard({ product, gridMode }) {
           <h3 className="font-heading text-sm sm:text-base font-semibold text-white leading-tight mb-1">{product.name}</h3>
           <p className="text-xs sm:text-sm text-[#A1A1AA] font-body line-clamp-2 mb-2 sm:mb-3 hidden sm:block">{product.description}</p>
           <div className="flex items-center justify-between">
-            <span className="text-base sm:text-lg font-body font-medium text-[#D4AF37]">${product.price.toFixed(2)}</span>
+            <span className="text-base sm:text-lg font-body font-medium text-[#D4AF37]">{format(product.price)}</span>
             <button
               data-testid={`add-to-cart-${product.id}`}
               onClick={handleAdd}
@@ -72,7 +74,7 @@ export default function ProductCard({ product, gridMode }) {
       {/* Below card: always visible info */}
       <div className="mt-2 px-1">
         <h3 className="font-body text-xs sm:text-sm text-white truncate">{product.name}</h3>
-        <p className="font-body text-xs sm:text-sm text-[#D4AF37]">${product.price.toFixed(2)}</p>
+        <p className="font-body text-xs sm:text-sm text-[#D4AF37]">{format(product.price)}</p>
       </div>
     </div>
   );
