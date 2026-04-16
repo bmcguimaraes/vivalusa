@@ -64,7 +64,7 @@ export default function Home() {
             <div className="flex items-center gap-3 animate-fade-in-up opacity-0 animate-delay-3">
               <Button
                 data-testid="hero-shop-btn"
-                onClick={() => document.getElementById('skincare')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => navigate('/shop')}
                 className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body font-medium px-6 h-11 rounded-md shadow-[0_0_20px_rgba(212,175,55,0.2)]"
               >
                 Shop Now

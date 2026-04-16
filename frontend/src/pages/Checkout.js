@@ -239,6 +239,24 @@ export default function Checkout() {
           </div>
         </div>
       </div>
+
+      {/* Mobile sticky bottom bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#18181B]/95 backdrop-blur-xl border-t border-[#27272A] px-4 py-3 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-[#A1A1AA] font-body">Total</p>
+          <p className="text-lg text-[#D4AF37] font-body font-medium">${total.toFixed(2)}</p>
+        </div>
+        <Button
+          data-testid="mobile-place-order-btn"
+          onClick={handleCheckout}
+          disabled={checkoutLoading || !shipping}
+          className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body font-medium h-10 px-6"
+        >
+          {checkoutLoading ? 'Processing...' : (
+            <span className="flex items-center gap-2"><Lock className="w-4 h-4" />Pay Now</span>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

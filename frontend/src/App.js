@@ -7,10 +7,12 @@ import { Toaster } from "@/components/ui/sonner";
 import Navbar from "@/components/Navbar";
 import CartDrawer from "@/components/CartDrawer";
 import Home from "@/pages/Home";
+import Shop from "@/pages/Shop";
 import ProductDetail from "@/pages/ProductDetail";
 import Checkout from "@/pages/Checkout";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import Admin from "@/pages/Admin";
+import Orders from "@/pages/Orders";
 
 function App() {
   return (
@@ -22,10 +24,12 @@ function App() {
             <CartDrawer />
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/shop" element={<Shop />} />
               <Route path="/product/:id" element={<ProductDetail />} />
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/cart" element={<Checkout />} />
               <Route path="/payment/success" element={<PaymentSuccess />} />
+              <Route path="/orders" element={<Orders />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
           </div>
