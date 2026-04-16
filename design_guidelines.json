@@ -1,0 +1,95 @@
+{
+  "project_name": "VivaLusa",
+  "theme": "dark",
+  "archetype": "5 (Jewel & Luxury)",
+  "design_philosophy": "Netflix-style cinematic presentation. High contrast, layered darkness, horizontal scrolling for product discovery, luxury aesthetic.",
+  "colors": {
+    "background": "#09090B",
+    "surface": "#18181B",
+    "surface_hover": "#27272A",
+    "primary": "#D4AF37",
+    "primary_foreground": "#000000",
+    "text_main": "#FAFAFA",
+    "text_muted": "#A1A1AA",
+    "border": "#27272A",
+    "error": "#991B1B",
+    "success": "#166534"
+  },
+  "typography": {
+    "headings": {
+      "font_family": "Cormorant Garamond",
+      "weights": ["300", "400", "600"],
+      "usage": "H1-H4, large cinematic titles. Always tracking-tight."
+    },
+    "body": {
+      "font_family": "Outfit",
+      "weights": ["300", "400", "500"],
+      "usage": "UI elements, paragraphs, prices. Clean and legible."
+    }
+  },
+  "layout_and_spacing": {
+    "general": "Generous spacing. Use p-8, p-12, p-16 for main sections. Bleed elements to the edge where appropriate (like hero images and carousel rows).",
+    "horizontal_carousels": "Use flex overflow-x-auto snap-x snap-mandatory with gap-4 or gap-6. Hide default scrollbars. Items should peak from the right edge to hint at scrolling.",
+    "bento_grids": "For non-carousel sections (like categories overview), use asymmetrical grids (grid-cols-1 md:grid-cols-12)."
+  },
+  "ui_components": {
+    "hero": "Full viewport height. Background image with heavy bottom vignette (bg-gradient-to-t from-background via-background/50 to-transparent). Content bottom-left aligned. Primary CTA large, like a 'Play' button.",
+    "navigation": "Sticky glassmorphism header (backdrop-blur-xl bg-background/60 border-b border-white/10). Logo left, links center, icons (search, user, cart) right.",
+    "product_card": "Vertical poster ratio (2:3 or 3:4). Image fills card. On hover, show overlay with details, price, and 'Add to Cart' button. Use Framer Motion for slight scale up.",
+    "buttons": "Primary: Solid #D4AF37 background, black text, rounded-md (not pill). Hover: Brighten. Secondary: outline border-white/20, text-white.",
+    "cart_drawer": "Slide over from right. Deep dark background. Glassmorphism effect."
+  },
+  "interactions_and_motion": {
+    "hover_states": "Product cards scale up (scale-105) on hover. Buttons show a slight glow (shadow-[0_0_15px_rgba(212,175,55,0.3)]).",
+    "page_transitions": "Fade in smoothly. Staggered fade-up for horizontal carousel items.",
+    "accessibility": "Ensure all interactive elements have focus rings (focus:ring-2 focus:ring-primary). Provide data-testid on everything."
+  },
+  "image_urls": [
+    {
+      "category": "logo",
+      "url": "https://static.prod-images.emergentagent.com/jobs/a578c59c-55b8-40a0-b078-ec23d806778b/images/8a1f1845869ff465ed3dbc4eb1821f06719d685c50eafefee05e9296c30ff53f.png",
+      "description": "VivaLusa logo, glowing gold on pure black background"
+    },
+    {
+      "category": "hero_background",
+      "url": "https://static.prod-images.emergentagent.com/jobs/a578c59c-55b8-40a0-b078-ec23d806778b/images/7d357cbadf6daad38e379851ca6a35c23910c79dbcb9e007c4fb08f0c057c427.png",
+      "description": "Cinematic wide-angle shot of glowing luxury cosmetic bottle"
+    },
+    {
+      "category": "section_background",
+      "url": "https://static.prod-images.emergentagent.com/jobs/a578c59c-55b8-40a0-b078-ec23d806778b/images/f69d95dc4c49e2995f379b5d56a38bc6de469f78c58f2a2caba3e57fa02c8947.png",
+      "description": "Dark velvet texture for premium category dividers"
+    },
+    {
+      "category": "promo_feature",
+      "url": "https://static.prod-images.emergentagent.com/jobs/a578c59c-55b8-40a0-b078-ec23d806778b/images/c55838c1ac0813ef7c6837a40e93a2c7c82d59810c8cd6fde36227eab2e17856.png",
+      "description": "Macro photography of shimmering red lipstick smear"
+    },
+    {
+      "category": "product_image",
+      "url": "https://images.unsplash.com/photo-1774682060992-46c7e9f2e50b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHw0fHxsdXh1cnklMjBjb3NtZXRpYyUyMHByb2R1Y3QlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzYzNDM0OTR8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Clear glass perfume bottle on dark cloth"
+    },
+    {
+      "category": "product_image",
+      "url": "https://images.unsplash.com/photo-1774682060971-7b0b07c1d47f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwyfHxsdXh1cnklMjBjb3NtZXRpYyUyMHByb2R1Y3QlMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzYzNDM0OTR8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Clear glass perfume bottle with silver label"
+    },
+    {
+      "category": "lifestyle",
+      "url": "https://images.unsplash.com/photo-1775900047812-0d0b2f02e049?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwzfHx3b21hbiUyMGFwcGx5aW5nJTIwbWFrZXVwJTIwY2luZW1hdGljJTIwZGFya3xlbnwwfHx8fDE3NzYzNDM0OTR8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Woman applying makeup illuminated by soft light"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Implement Netflix-style horizontal product discovery: Create a custom component for horizontal product rows using flex, overflow-x-auto, and snap-x snap-mandatory. Hide scrollbars using CSS.",
+    "Global Layout: Background must be very dark (#09090B). Use 'dark' class on the html element.",
+    "Product details view should resemble a cinematic show page: large full-bleed backdrop image with the product, fading into black at the bottom where specifics (price, shipping) are listed.",
+    "Implement Stripe checkout for payments.",
+    "Implement Zip/Postal code distance-based shipping calculation. Mock a simple logic: (e.g., base $5 + $0.05 * Math.abs(userZip - storeZip)).",
+    "Users who log in receive a 5% discount applied automatically in the cart/checkout.",
+    "Admin panel needs CRUD operations for products. Seed with the provided luxury perfume images and dummy cosmetics.",
+    "Use Phosphor icons (@phosphor-icons/react) for a premium, thin-line look that matches the aesthetic.",
+    "Add 'data-testid' to all buttons, links, inputs, and major sections."
+  ]
+}
