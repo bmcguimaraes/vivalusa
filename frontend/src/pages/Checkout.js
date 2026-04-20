@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Truck, Lock, Sparkles, MapPin } from 'lucide-react';
+import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +32,7 @@ export default function Checkout() {
   const [shipping, setShipping] = useState(null);
   const [shippingLoading, setShippingLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [paypalClientId, setPaypalClientId] = useState(null);
 
   const discount = user ? subtotal * 0.05 : 0;
   const afterDiscount = subtotal - discount;
@@ -40,9 +42,11 @@ export default function Checkout() {
     axios.get(`${API}/shipping/countries`)
       .then(res => setCountries(res.data))
       .catch(() => {});
+    axios.get(`${API}/paypal/client-id`)
+      .then(res => setPaypalClientId(res.data.client_id))
+      .catch(() => {});
   }, []);
 
-  // Auto-calculate shipping when country changes
   useEffect(() => {
     if (form.country) {
       setShippingLoading(true);
@@ -56,15 +60,20 @@ export default function Checkout() {
 
   const handleChange = (e) => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  const handleCheckout = async () => {
+  const validateForm = () => {
     if (!form.fullName || !form.email || !form.address || !form.city || !form.country) {
       toast.error('Please fill in all required fields');
-      return;
+      return false;
     }
     if (!shipping) {
       toast.error('Please select a country for shipping');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleCheckout = async () => {
+    if (!validateForm()) return;
     setCheckoutLoading(true);
     try {
       const { data } = await axios.post(`${API}/checkout/session`, {
@@ -88,6 +97,26 @@ export default function Checkout() {
     } finally {
       setCheckoutLoading(false);
     }
+  };
+
+  const createPayPalOrder = async () => {
+    const { data } = await axios.post(`${API}/paypal/create-order`, {
+      items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+      shipping_address: {
+        full_name: form.fullName,
+        address: form.address,
+        city: form.city,
+        zip_code: form.zip_code,
+        country: form.country
+      },
+      origin_url: window.location.origin,
+      guest_email: !user ? form.email : null
+    }, { withCredentials: true });
+    return data.order_id;
+  };
+
+  const onPayPalApprove = async (data) => {
+    navigate(`/payment/success?paypal=true&token=${data.orderID}`);
   };
 
   if (items.length === 0) {
@@ -223,6 +252,7 @@ export default function Checkout() {
                 </p>
               )}
 
+              {/* Stripe button */}
               <Button
                 data-testid="place-order-btn"
                 onClick={handleCheckout}
@@ -237,13 +267,34 @@ export default function Checkout() {
                 ) : (
                   <span className="flex items-center gap-2">
                     <Lock className="w-4 h-4" />
-                    Pay {format(total)}
+                    Pay {format(total)} with Card
                   </span>
                 )}
               </Button>
 
+              {/* PayPal button */}
+              {paypalClientId && shipping && (
+                <div className="mt-3">
+                  <div className="flex items-center gap-2 my-3">
+                    <div className="flex-1 h-px bg-[#27272A]" />
+                    <span className="text-xs text-[#3F3F46] font-body">or</span>
+                    <div className="flex-1 h-px bg-[#27272A]" />
+                  </div>
+                  <PayPalScriptProvider options={{ clientId: paypalClientId, currency: "EUR" }}>
+                    <PayPalButtons
+                      style={{ layout: "horizontal", color: "gold", shape: "rect", label: "paypal", height: 44 }}
+                      onClick={() => { if (!validateForm()) return false; }}
+                      createOrder={createPayPalOrder}
+                      onApprove={onPayPalApprove}
+                      onError={() => toast.error('PayPal payment failed. Try paying by card.')}
+                      onCancel={() => toast.info('PayPal payment cancelled.')}
+                    />
+                  </PayPalScriptProvider>
+                </div>
+              )}
+
               <p className="text-center text-[10px] text-[#3F3F46] mt-3 font-body flex items-center justify-center gap-1">
-                <Lock className="w-3 h-3" /> Secure payment via Stripe
+                <Lock className="w-3 h-3" /> Secure payment via Stripe or PayPal
               </p>
             </div>
           </div>

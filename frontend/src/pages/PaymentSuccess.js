@@ -10,6 +10,8 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export default function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
+  const isPayPal = searchParams.get('paypal') === 'true';
+  const paypalToken = searchParams.get('token');
   const navigate = useNavigate();
   const { clearCart } = useCart();
   const [status, setStatus] = useState('checking');
@@ -17,9 +19,28 @@ export default function PaymentSuccess() {
   const polledRef = useRef(false);
 
   useEffect(() => {
-    if (!sessionId || polledRef.current) return;
+    if (polledRef.current) return;
     polledRef.current = true;
 
+    if (isPayPal && paypalToken) {
+      // PayPal flow: capture the approved order
+      axios.post(`${API}/paypal/capture-order/${paypalToken}`, {}, { withCredentials: true })
+        .then(res => {
+          if (res.data.status === 'COMPLETED') {
+            clearCart();
+            setStatus('success');
+            setPaymentInfo({ method: 'paypal' });
+          } else {
+            setStatus('error');
+          }
+        })
+        .catch(() => setStatus('error'));
+      return;
+    }
+
+    if (!sessionId) return;
+
+    // Stripe flow: poll checkout status
     const pollStatus = async (attempts = 0) => {
       const maxAttempts = 6;
       const interval = 2000;
@@ -45,9 +66,9 @@ export default function PaymentSuccess() {
       }
     };
     pollStatus();
-  }, [sessionId, clearCart]);
+  }, [sessionId, isPayPal, paypalToken, clearCart]);
 
-  if (!sessionId) {
+  if (!sessionId && !(isPayPal && paypalToken)) {
     return (
       <div className="min-h-screen pt-24 flex flex-col items-center justify-center px-6">
         <p className="text-white font-body">Invalid payment session.</p>
@@ -74,11 +95,11 @@ export default function PaymentSuccess() {
             </div>
             <h1 className="font-heading text-3xl text-white mb-2">Payment Successful!</h1>
             <p className="font-body text-sm text-[#A1A1AA] mb-6">Thank you for your order. Your items are on their way!</p>
-            {paymentInfo && (
+            {paymentInfo && !paymentInfo.method && (
               <div className="bg-[#18181B] rounded-lg border border-[#27272A] p-4 mb-6 text-left">
                 <div className="flex justify-between text-sm font-body mb-2">
                   <span className="text-[#A1A1AA]">Amount</span>
-                  <span className="text-white">${(paymentInfo.amount_total / 100).toFixed(2)} {paymentInfo.currency?.toUpperCase()}</span>
+                  <span className="text-white">€{(paymentInfo.amount_total / 100).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-body">
                   <span className="text-[#A1A1AA]">Status</span>
@@ -103,11 +124,13 @@ export default function PaymentSuccess() {
             <p className="font-body text-sm text-[#A1A1AA] mb-6">
               {status === 'timeout'
                 ? 'We could not confirm your payment. Please check your email for confirmation.'
-                : 'Something went wrong. Please try again.'}
+                : 'Something went wrong. Please try again or pay with card.'}
             </p>
-            <Button data-testid="retry-btn" onClick={() => navigate('/checkout')} className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body">
-              Try Again
-            </Button>
+            <div className="flex gap-3 justify-center">
+              <Button data-testid="retry-btn" onClick={() => navigate('/checkout')} className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body">
+                Try Again
+              </Button>
+            </div>
           </>
         )}
       </div>
