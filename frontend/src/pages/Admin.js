@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Plus, Pencil, Trash2, ArrowLeft, Package, ShoppingBag, Save, Upload, BarChart3, AlertTriangle, TrendingUp, Boxes } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Package, ShoppingBag, Save, Upload, BarChart3, AlertTriangle, TrendingUp, Boxes, Shield, ShieldOff, Key, RefreshCw, Copy, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +31,12 @@ export default function Admin() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const [twoFaStatus, setTwoFaStatus] = useState(null);
+  const [twoFaSetupData, setTwoFaSetupData] = useState(null);
+  const [securityPhase, setSecurityPhase] = useState('idle');
+  const [securityCode, setSecurityCode] = useState('');
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [backupCodes, setBackupCodes] = useState([]);
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'admin')) navigate('/');
@@ -39,6 +45,14 @@ export default function Admin() {
   useEffect(() => {
     if (user?.role === 'admin') fetchData();
   }, [user]);
+
+  useEffect(() => {
+    if (tab === 'security' && user?.role === 'admin') {
+      axios.get(`${API}/admin/2fa/status`, { withCredentials: true })
+        .then(res => setTwoFaStatus(res.data))
+        .catch(() => {});
+    }
+  }, [tab, user]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -110,6 +124,50 @@ export default function Admin() {
     }
   };
 
+  const handle2FASetup = async () => {
+    setSecurityLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/admin/2fa/setup`, {}, { withCredentials: true });
+      setTwoFaSetupData(data);
+      setBackupCodes(data.backup_codes);
+      setSecurityPhase('setup');
+    } catch (err) { toast.error(err.response?.data?.detail || '2FA setup failed'); }
+    finally { setSecurityLoading(false); }
+  };
+
+  const handle2FAConfirm = async () => {
+    setSecurityLoading(true);
+    try {
+      await axios.post(`${API}/admin/2fa/confirm`, { code: securityCode }, { withCredentials: true });
+      toast.success('2FA enabled successfully');
+      setTwoFaStatus({ enabled: true, has_backup_codes: true });
+      setSecurityPhase('idle'); setSecurityCode(''); setTwoFaSetupData(null);
+    } catch (err) { toast.error(err.response?.data?.detail || 'Invalid code'); }
+    finally { setSecurityLoading(false); }
+  };
+
+  const handle2FADisable = async () => {
+    setSecurityLoading(true);
+    try {
+      await axios.post(`${API}/admin/2fa/disable`, { code: securityCode }, { withCredentials: true });
+      toast.success('2FA disabled');
+      setTwoFaStatus({ enabled: false, has_backup_codes: false });
+      setSecurityPhase('idle'); setSecurityCode('');
+    } catch (err) { toast.error(err.response?.data?.detail || 'Invalid code'); }
+    finally { setSecurityLoading(false); }
+  };
+
+  const handle2FARegenBackup = async () => {
+    setSecurityLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/admin/2fa/backup-codes/regenerate`, { code: securityCode }, { withCredentials: true });
+      setBackupCodes(data.backup_codes);
+      setSecurityPhase('regen'); setSecurityCode('');
+      toast.success('Backup codes regenerated');
+    } catch (err) { toast.error(err.response?.data?.detail || 'Invalid code'); }
+    finally { setSecurityLoading(false); }
+  };
+
   const handleDelete = async (productId) => {
     if (!window.confirm('Delete this product?')) return;
     try {
@@ -149,6 +207,7 @@ export default function Admin() {
             { id: 'products', icon: Package, label: `Products (${products.length})` },
             { id: 'sales', icon: BarChart3, label: 'Sales & Stock' },
             { id: 'orders', icon: ShoppingBag, label: `Orders (${orders.length})` },
+            { id: 'security', icon: Shield, label: 'Security' },
           ].map(t => (
             <button
               key={t.id}
@@ -339,6 +398,119 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+        {/* ─── SECURITY TAB ─── */}
+        {tab === 'security' && (
+          <div className="max-w-lg space-y-6">
+            <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                {twoFaStatus?.enabled
+                  ? <Shield className="w-5 h-5 text-green-400" />
+                  : <ShieldOff className="w-5 h-5 text-[#A1A1AA]" />}
+                <div>
+                  <h3 className="font-heading text-lg text-white">Two-Factor Authentication</h3>
+                  <p className="text-xs text-[#A1A1AA]">
+                    {twoFaStatus?.enabled ? 'Enabled — your account is protected' : 'Disabled — enable to secure your admin account'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Not yet setup */}
+              {!twoFaStatus?.enabled && securityPhase === 'idle' && (
+                <Button onClick={handle2FASetup} disabled={securityLoading} className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body text-sm">
+                  <Key className="w-4 h-4 mr-2" /> {securityLoading ? 'Setting up...' : 'Enable 2FA'}
+                </Button>
+              )}
+
+              {/* Setup: show QR + confirm */}
+              {securityPhase === 'setup' && twoFaSetupData && (
+                <div className="space-y-4">
+                  <p className="text-xs text-[#A1A1AA]">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
+                  <img src={twoFaSetupData.qr_png} alt="QR Code" className="w-40 h-40 rounded border border-[#27272A] bg-white p-1" />
+                  <div>
+                    <p className="text-xs text-[#A1A1AA] mb-1">Manual key (if you can't scan):</p>
+                    <code className="text-xs text-[#D4AF37] bg-[#09090B] px-2 py-1 rounded break-all">{twoFaSetupData.manual_key}</code>
+                  </div>
+                  <div>
+                    <p className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> Save these backup codes — shown once only
+                    </p>
+                    <div className="grid grid-cols-2 gap-1 bg-[#09090B] rounded p-3">
+                      {backupCodes.map((c, i) => <code key={i} className="text-xs text-white font-mono">{c}</code>)}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[#A1A1AA] text-xs">Enter the 6-digit code from your app to confirm</Label>
+                    <Input value={securityCode} onChange={e => setSecurityCode(e.target.value)} className="bg-[#09090B] border-[#27272A] text-white w-40 text-center tracking-widest" placeholder="000000" maxLength={6} />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button onClick={handle2FAConfirm} disabled={securityLoading || !securityCode} className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body text-sm">
+                      {securityLoading ? 'Confirming...' : 'Confirm & Activate'}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setSecurityPhase('idle'); setSecurityCode(''); setTwoFaSetupData(null); }} className="border-[#27272A] text-white hover:bg-[#27272A] font-body text-sm">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Enabled: show disable + regen backup */}
+              {twoFaStatus?.enabled && securityPhase === 'idle' && (
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <Button onClick={() => setSecurityPhase('disable')} variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10 font-body text-sm">
+                      <ShieldOff className="w-4 h-4 mr-2" /> Disable 2FA
+                    </Button>
+                    <Button onClick={() => setSecurityPhase('regen_confirm')} variant="outline" className="border-[#27272A] text-[#A1A1AA] hover:bg-[#27272A] font-body text-sm">
+                      <RefreshCw className="w-4 h-4 mr-2" /> Regenerate Backup Codes
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Disable: confirm with TOTP */}
+              {securityPhase === 'disable' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-[#A1A1AA]">Enter your authenticator code to confirm disabling 2FA:</p>
+                  <Input value={securityCode} onChange={e => setSecurityCode(e.target.value)} className="bg-[#09090B] border-[#27272A] text-white w-40 text-center tracking-widest" placeholder="000000" maxLength={6} />
+                  <div className="flex gap-3">
+                    <Button onClick={handle2FADisable} disabled={securityLoading || !securityCode} className="bg-red-600 hover:bg-red-700 text-white font-body text-sm">
+                      {securityLoading ? 'Disabling...' : 'Confirm Disable'}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setSecurityPhase('idle'); setSecurityCode(''); }} className="border-[#27272A] text-white hover:bg-[#27272A] font-body text-sm">Cancel</Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Regenerate backup codes: confirm with TOTP */}
+              {securityPhase === 'regen_confirm' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-[#A1A1AA]">Enter your authenticator code to regenerate backup codes:</p>
+                  <Input value={securityCode} onChange={e => setSecurityCode(e.target.value)} className="bg-[#09090B] border-[#27272A] text-white w-40 text-center tracking-widest" placeholder="000000" maxLength={6} />
+                  <div className="flex gap-3">
+                    <Button onClick={handle2FARegenBackup} disabled={securityLoading || !securityCode} className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body text-sm">
+                      {securityLoading ? 'Generating...' : 'Generate New Codes'}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setSecurityPhase('idle'); setSecurityCode(''); }} className="border-[#27272A] text-white hover:bg-[#27272A] font-body text-sm">Cancel</Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Show newly generated backup codes */}
+              {securityPhase === 'regen' && backupCodes.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-green-400 text-xs">
+                    <CheckCircle2 className="w-4 h-4" /> New backup codes generated — save them now
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 bg-[#09090B] rounded p-3">
+                    {backupCodes.map((c, i) => <code key={i} className="text-xs text-white font-mono">{c}</code>)}
+                  </div>
+                  <Button onClick={() => { setSecurityPhase('idle'); setBackupCodes([]); }} className="bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body text-sm">Done</Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* Product Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

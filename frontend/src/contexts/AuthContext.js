@@ -17,6 +17,7 @@ function formatApiErrorDetail(detail) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pendingTwoFA, setPendingTwoFA] = useState(false);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -34,6 +35,21 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const { data } = await axios.post(`${API}/auth/login`, { email, password }, { withCredentials: true });
+      if (data.requires_2fa) {
+        setPendingTwoFA(true);
+        return { success: false, requires_2fa: true };
+      }
+      setUser(data);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: formatApiErrorDetail(e.response?.data?.detail) };
+    }
+  };
+
+  const verify2fa = async (code) => {
+    try {
+      const { data } = await axios.post(`${API}/admin/2fa/verify`, { code }, { withCredentials: true });
+      setPendingTwoFA(false);
       setUser(data);
       return { success: true };
     } catch (e) {
@@ -56,10 +72,11 @@ export function AuthProvider({ children }) {
       await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
     } catch { /* ignore */ }
     setUser(false);
+    setPendingTwoFA(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, verify2fa, pendingTwoFA, setPendingTwoFA }}>
       {children}
     </AuthContext.Provider>
   );

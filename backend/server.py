@@ -20,6 +20,11 @@ import secrets
 from bson import ObjectId
 import requests as http_requests
 import time
+import pyotp
+import qrcode
+import io
+import base64
+import hashlib
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -243,6 +248,30 @@ async def login(req: LoginRequest, response: Response, request: Request):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     await db.login_attempts.delete_one({"identifier": identifier})
+
+    # 2FA check for admin users with TOTP enabled
+    if user.get("role") == "admin" and user.get("totp_enabled"):
+        skip_2fa = False
+        trust_cookie = request.cookies.get("vl_2fa_trust")
+        if trust_cookie:
+            trust_hash = hashlib.sha256(trust_cookie.encode()).hexdigest()
+            trusted = await db.totp_trusted_sessions.find_one({
+                "user_id": ObjectId(str(user["_id"])),
+                "session_token_hash": trust_hash
+            })
+            if trusted:
+                skip_2fa = True
+        if not skip_2fa:
+            pending_payload = {
+                "sub": str(user["_id"]), "email": email,
+                "type": "2fa_pending",
+                "exp": datetime.now(timezone.utc) + timedelta(minutes=5)
+            }
+            pending_token = jwt.encode(pending_payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
+            response.set_cookie(key="2fa_pending", value=pending_token, httponly=True,
+                                secure=IS_PRODUCTION, samesite="lax", max_age=300, path="/")
+            return {"requires_2fa": True}
+
     user_id = str(user["_id"])
     access_token = create_access_token(user_id, email)
     refresh_token = create_refresh_token(user_id)
@@ -278,6 +307,133 @@ async def refresh_token(request: Request, response: Response):
         return {"message": "Token refreshed"}
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+# ─── ADMIN 2FA ───
+class TotpCodeRequest(BaseModel):
+    code: str
+
+@api_router.post("/admin/2fa/setup")
+async def totp_setup(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    secret = pyotp.random_base32()
+    codes_plain = [secrets.token_urlsafe(6).upper() for _ in range(8)]
+    codes_hashed = [hash_password(c) for c in codes_plain]
+    await db.users.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {"totp_secret": secret, "totp_enabled": False, "totp_backup_codes": codes_hashed}}
+    )
+    totp_uri = pyotp.TOTP(secret).provisioning_uri(name=user["email"], issuer_name="VivaLusa")
+    img = qrcode.make(totp_uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_png = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    return {"qr_png": qr_png, "manual_key": secret, "backup_codes": codes_plain}
+
+@api_router.post("/admin/2fa/confirm")
+async def totp_confirm(req: TotpCodeRequest, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    secret = user.get("totp_secret")
+    if not secret:
+        raise HTTPException(status_code=400, detail="2FA setup not started — call /admin/2fa/setup first")
+    if not pyotp.TOTP(secret).verify(req.code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+    await db.users.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {"totp_enabled": True, "totp_verified_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True}
+
+@api_router.post("/admin/2fa/verify")
+async def totp_verify(req: TotpCodeRequest, request: Request, response: Response):
+    token = request.cookies.get("2fa_pending")
+    if not token:
+        raise HTTPException(status_code=401, detail="No pending 2FA session")
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "2fa_pending":
+            raise HTTPException(status_code=401, detail="Invalid pending token")
+        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Pending session expired — log in again")
+
+    secret = user.get("totp_secret")
+    valid = bool(secret and pyotp.TOTP(secret).verify(req.code, valid_window=1))
+    if not valid:
+        for i, hashed_code in enumerate(user.get("totp_backup_codes", [])):
+            if verify_password(req.code, hashed_code):
+                remaining = [c for j, c in enumerate(user["totp_backup_codes"]) if j != i]
+                await db.users.update_one(
+                    {"_id": user["_id"]}, {"$set": {"totp_backup_codes": remaining}}
+                )
+                valid = True
+                break
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid TOTP code or backup code")
+
+    response.delete_cookie("2fa_pending", path="/")
+    user_id = str(user["_id"])
+    access_token = create_access_token(user_id, user["email"])
+    refresh_token_val = create_refresh_token(user_id)
+    set_auth_cookies(response, access_token, refresh_token_val)
+
+    trust_token = secrets.token_hex(32)
+    trust_hash = hashlib.sha256(trust_token.encode()).hexdigest()
+    ip = request.client.host if request.client else "unknown"
+    await db.totp_trusted_sessions.insert_one({
+        "user_id": ObjectId(user_id),
+        "session_token_hash": trust_hash,
+        "user_agent": request.headers.get("User-Agent", ""),
+        "ip": ip,
+        "verified_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=30)
+    })
+    response.set_cookie(key="vl_2fa_trust", value=trust_token, httponly=True,
+                        secure=IS_PRODUCTION, samesite="lax", max_age=2592000, path="/")
+    return {"id": user_id, "name": user.get("name"), "email": user["email"], "role": user.get("role", "admin")}
+
+@api_router.post("/admin/2fa/backup-codes/regenerate")
+async def totp_regen_backup(req: TotpCodeRequest, request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if not user.get("totp_enabled"):
+        raise HTTPException(status_code=400, detail="2FA is not enabled")
+    if not pyotp.TOTP(user["totp_secret"]).verify(req.code, valid_window=1):
+        raise HTTPException(status_code=401, detail="Invalid TOTP code")
+    codes_plain = [secrets.token_urlsafe(6).upper() for _ in range(8)]
+    codes_hashed = [hash_password(c) for c in codes_plain]
+    await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"totp_backup_codes": codes_hashed}})
+    return {"backup_codes": codes_plain}
+
+@api_router.get("/admin/2fa/status")
+async def totp_status(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return {"enabled": bool(user.get("totp_enabled")), "has_backup_codes": len(user.get("totp_backup_codes", [])) > 0}
+
+@api_router.post("/admin/2fa/disable")
+async def totp_disable(req: TotpCodeRequest, request: Request, response: Response):
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if not user.get("totp_enabled"):
+        raise HTTPException(status_code=400, detail="2FA is not enabled")
+    if not pyotp.TOTP(user["totp_secret"]).verify(req.code, valid_window=1):
+        raise HTTPException(status_code=401, detail="Invalid TOTP code")
+    await db.users.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {"totp_enabled": False, "totp_secret": None, "totp_backup_codes": []}}
+    )
+    await db.totp_trusted_sessions.delete_many({"user_id": ObjectId(user["_id"])})
+    response.delete_cookie("vl_2fa_trust", path="/")
+    return {"success": True}
 
 # ─── PRODUCT ROUTES ───
 @api_router.get("/products")
@@ -1020,6 +1176,9 @@ async def seed_products():
 async def startup():
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
+    await db.totp_trusted_sessions.create_index("expires_at", expireAfterSeconds=0)
+    await db.totp_trusted_sessions.create_index("user_id")
+    await db.totp_trusted_sessions.create_index("session_token_hash")
     await db.products.create_index("category")
     await db.products.create_index("id", unique=True)
     await db.payment_transactions.create_index("session_id")

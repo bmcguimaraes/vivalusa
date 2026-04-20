@@ -4,16 +4,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, ShieldCheck } from 'lucide-react';
 
 export default function AuthModal({ open, onClose }) {
   const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
+  const { login, register, verify2fa, pendingTwoFA, setPendingTwoFA } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,10 +30,69 @@ export default function AuthModal({ open, onClose }) {
     if (result.success) {
       onClose();
       setName(''); setEmail(''); setPassword('');
+    } else if (result.requires_2fa) {
+      // pendingTwoFA is set in AuthContext — show TOTP entry
     } else {
       setError(result.error);
     }
   };
+
+  const handle2fa = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const result = await verify2fa(totpCode);
+    setLoading(false);
+    if (result.success) {
+      setTotpCode('');
+      onClose();
+    } else {
+      setError(result.error);
+    }
+  };
+
+  const cancelTwoFA = () => {
+    setPendingTwoFA(false);
+    setTotpCode('');
+    setError('');
+  };
+
+  if (pendingTwoFA) {
+    return (
+      <Dialog open={open} onOpenChange={() => { cancelTwoFA(); onClose(); }}>
+        <DialogContent className="sm:max-w-[380px] bg-[#18181B] border-[#27272A] text-white" data-testid="totp-modal">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl text-center text-[#D4AF37] flex items-center justify-center gap-2">
+              <ShieldCheck className="w-5 h-5" /> Two-Factor Authentication
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[#A1A1AA] text-center">Enter the 6-digit code from your authenticator app, or a backup code.</p>
+          <form onSubmit={handle2fa} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-[#A1A1AA] text-xs">Authentication Code</Label>
+              <Input
+                data-testid="totp-code-input"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value)}
+                className="bg-[#09090B] border-[#27272A] text-white text-center tracking-widest text-lg"
+                placeholder="000000"
+                maxLength={20}
+                autoFocus
+                autoComplete="one-time-code"
+              />
+            </div>
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            <Button type="submit" disabled={loading || !totpCode} className="w-full bg-[#D4AF37] hover:bg-[#B8962F] text-black font-body font-medium">
+              {loading ? 'Verifying...' : 'Verify'}
+            </Button>
+            <button type="button" onClick={cancelTwoFA} className="w-full text-xs text-[#3F3F46] hover:text-[#A1A1AA] transition-colors">
+              Back to login
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
