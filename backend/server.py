@@ -929,12 +929,18 @@ async def startup():
 
 app.include_router(api_router)
 
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+if not _cors_origins:
+    raise RuntimeError(
+        "CORS_ORIGINS env var is required. "
+        "Example: CORS_ORIGINS=https://vivalusa.com"
+    )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Cookie"],
 )
 
 @app.on_event("shutdown")
