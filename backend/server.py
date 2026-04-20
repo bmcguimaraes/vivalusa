@@ -51,39 +51,32 @@ logger = logging.getLogger(__name__)
 
 IS_PRODUCTION = os.environ.get("ENVIRONMENT", "development").lower() == "production"
 
-# ─── Object Storage ───
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "vivalusa"
-storage_key = None
+# ─── Object Storage (Cloudflare R2 / S3-compatible) ───
+import boto3 as _boto3
 
-def init_storage():
-    global storage_key
-    if storage_key:
-        return storage_key
-    resp = http_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+APP_NAME = "vivalusa"
+BUCKET = os.environ.get("S3_BUCKET", "vivalusa-images")
+_s3_client = None
+
+def _get_s3():
+    global _s3_client
+    if not _s3_client:
+        _s3_client = _boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("S3_ENDPOINT_URL"),
+            aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+            aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+            region_name=os.environ.get("S3_REGION", "auto"),
+        )
+    return _s3_client
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = http_requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
+    _get_s3().put_object(Bucket=BUCKET, Key=path, Body=data, ContentType=content_type)
+    return {"path": path}
 
 def get_object(path: str):
-    key = init_storage()
-    resp = http_requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    obj = _get_s3().get_object(Bucket=BUCKET, Key=path)
+    return obj["Body"].read(), obj["ContentType"]
 
 # ─── Currency Exchange ───
 _exchange_cache = {"rates": {}, "timestamp": 0}
@@ -1034,12 +1027,6 @@ async def startup():
     await db.files.create_index("storage_path")
     await seed_admin()
     await seed_products()
-    # Init object storage
-    try:
-        init_storage()
-        logger.info("Object storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
 
 app.include_router(api_router)
 
