@@ -513,10 +513,51 @@ async def get_analytics(request: Request):
         "recent_orders": recent_orders
     }
 
+# ─── Email & Order Helpers ───
+async def _get_user_email(user_id: Optional[str]) -> Optional[str]:
+    if not user_id or user_id == "guest":
+        return None
+    try:
+        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1})
+        return user.get("email") if user else None
+    except Exception:
+        return None
+
+def send_order_confirmation(order: dict, email: str):
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if not resend_key:
+        logger.warning("RESEND_API_KEY not set — skipping order confirmation email")
+        return
+    import resend as resend_client
+    resend_client.api_key = resend_key
+    items_html = "".join(
+        f"<li>{item['name']} × {item['quantity']} — €{item['price'] * item['quantity']:.2f}</li>"
+        for item in order.get("items", [])
+    )
+    try:
+        resend_client.Emails.send({
+            "from": "VivaLusa <orders@vivalusa.com>",
+            "to": email,
+            "subject": f"Your VivaLusa order #{order['id'][:8].upper()} is confirmed",
+            "html": f"""
+                <h2>Thank you for your order!</h2>
+                <p>Order reference: <strong>#{order['id'][:8].upper()}</strong></p>
+                <ul>{items_html}</ul>
+                <p>Subtotal: €{order.get('subtotal', 0):.2f}</p>
+                <p>Shipping: €{order.get('shipping_cost', 0):.2f}</p>
+                <p><strong>Total: €{order.get('total', 0):.2f}</strong></p>
+                <p>We'll be in touch when your order ships.</p>
+                <p>— The VivaLusa team</p>
+            """,
+        })
+    except Exception as e:
+        logger.error(f"Order confirmation email failed: {e}")
+
 # ─── CHECKOUT / STRIPE ───
 @api_router.post("/checkout/session")
 async def create_checkout_session(req: CheckoutRequest, request: Request):
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest, CheckoutSessionResponse
+    import stripe as stripe_lib
+    stripe_lib.api_key = os.environ.get("STRIPE_API_KEY")
 
     user = await get_optional_user(request)
 
@@ -558,11 +599,6 @@ async def create_checkout_session(req: CheckoutRequest, request: Request):
     success_url = f"{origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin_url}/cart"
 
-    api_key = os.environ.get("STRIPE_API_KEY")
-    host_url = str(request.base_url)
-    webhook_url = f"{host_url}api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-
     metadata = {
         "user_id": user["_id"] if user else "guest",
         "user_email": user["email"] if user else (req.guest_email or ""),
@@ -570,19 +606,26 @@ async def create_checkout_session(req: CheckoutRequest, request: Request):
         "shipping": str(shipping_cost),
     }
 
-    checkout_request = CheckoutSessionRequest(
-        amount=final_total,
-        currency="usd",
+    session = stripe_lib.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": "eur",
+                "unit_amount": int(final_total * 100),
+                "product_data": {"name": "VivaLusa Order"},
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata=metadata
+        metadata=metadata,
     )
-    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
 
     # Create payment transaction record
     transaction = {
         "id": str(uuid.uuid4()),
-        "session_id": session.session_id,
+        "session_id": session.id,
         "user_id": user["_id"] if user else None,
         "guest_email": req.guest_email if not user else None,
         "items": cart_items,
@@ -597,29 +640,22 @@ async def create_checkout_session(req: CheckoutRequest, request: Request):
     }
     await db.payment_transactions.insert_one(transaction)
 
-    return {"url": session.url, "session_id": session.session_id}
+    return {"url": session.url, "session_id": session.id}
 
 @api_router.get("/checkout/status/{session_id}")
 async def get_checkout_status(session_id: str, request: Request):
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout
+    import stripe as stripe_lib
+    stripe_lib.api_key = os.environ.get("STRIPE_API_KEY")
+    session = stripe_lib.checkout.Session.retrieve(session_id)
 
-    api_key = os.environ.get("STRIPE_API_KEY")
-    host_url = str(request.base_url)
-    webhook_url = f"{host_url}api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-
-    status = await stripe_checkout.get_checkout_status(session_id)
-
-    # Update transaction
     tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
     if tx and tx.get("payment_status") != "paid":
-        new_status = "completed" if status.payment_status == "paid" else ("expired" if status.status == "expired" else tx.get("status", "initiated"))
+        new_status = "completed" if session.payment_status == "paid" else ("expired" if session.status == "expired" else tx.get("status", "initiated"))
         await db.payment_transactions.update_one(
             {"session_id": session_id},
-            {"$set": {"payment_status": status.payment_status, "status": new_status}}
+            {"$set": {"payment_status": session.payment_status, "status": new_status}}
         )
-        if status.payment_status == "paid" and tx.get("status") != "completed":
-            # Create order record
+        if session.payment_status == "paid" and tx.get("status") != "completed":
             order_doc = {
                 "id": str(uuid.uuid4()),
                 "session_id": session_id,
@@ -635,33 +671,60 @@ async def get_checkout_status(session_id: str, request: Request):
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.orders.insert_one(order_doc)
+            email = tx.get("guest_email") or await _get_user_email(tx.get("user_id"))
+            if email:
+                send_order_confirmation(order_doc, email)
 
     return {
-        "status": status.status,
-        "payment_status": status.payment_status,
-        "amount_total": status.amount_total,
-        "currency": status.currency
+        "status": session.status,
+        "payment_status": session.payment_status,
+        "amount_total": session.amount_total,
+        "currency": session.currency
     }
 
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout
-    api_key = os.environ.get("STRIPE_API_KEY")
-    host_url = str(request.base_url)
-    webhook_url = f"{host_url}api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    import stripe as stripe_lib
     body = await request.body()
+    sig_header = request.headers.get("Stripe-Signature", "")
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
     try:
-        webhook_response = await stripe_checkout.handle_webhook(body, request.headers.get("Stripe-Signature"))
-        if webhook_response.payment_status == "paid":
-            await db.payment_transactions.update_one(
-                {"session_id": webhook_response.session_id},
-                {"$set": {"payment_status": "paid", "status": "completed"}}
-            )
+        event = stripe_lib.Webhook.construct_event(body, sig_header, webhook_secret)
+        if event["type"] == "checkout.session.completed":
+            stripe_session = event["data"]["object"]
+            if stripe_session.get("payment_status") == "paid":
+                session_id = stripe_session["id"]
+                tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+                if tx and tx.get("payment_status") != "paid":
+                    await db.payment_transactions.update_one(
+                        {"session_id": session_id},
+                        {"$set": {"payment_status": "paid", "status": "completed"}}
+                    )
+                    if tx.get("status") != "completed":
+                        order_doc = {
+                            "id": str(uuid.uuid4()),
+                            "session_id": session_id,
+                            "user_id": tx.get("user_id"),
+                            "guest_email": tx.get("guest_email"),
+                            "items": tx.get("items", []),
+                            "subtotal": tx.get("subtotal", 0),
+                            "discount": tx.get("discount", 0),
+                            "shipping_cost": tx.get("shipping_cost", 0),
+                            "total": tx.get("total", 0),
+                            "shipping_address": tx.get("shipping_address", {}),
+                            "status": "confirmed",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.orders.insert_one(order_doc)
+                        email = tx.get("guest_email") or await _get_user_email(tx.get("user_id"))
+                        if email:
+                            send_order_confirmation(order_doc, email)
         return {"status": "processed"}
+    except stripe_lib.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
     except Exception as e:
         logger.error(f"Webhook error: {e}")
-        return {"status": "error"}
+        raise HTTPException(status_code=400, detail="Webhook processing error")
 
 # ─── PAYPAL ───
 PAYPAL_BASE = "https://api-m.sandbox.paypal.com" if os.environ.get("PAYPAL_MODE") == "sandbox" else "https://api-m.paypal.com"
@@ -797,6 +860,9 @@ async def paypal_capture_order(order_id: str, request: Request):
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.orders.insert_one(order_doc)
+            email = tx.get("guest_email") or await _get_user_email(tx.get("user_id"))
+            if email:
+                send_order_confirmation(order_doc, email)
 
     return {"status": status, "order_id": order_id}
 
