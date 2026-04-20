@@ -888,6 +888,42 @@ async def get_all_orders(request: Request):
     orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return orders
 
+# ─── REFUND ───
+class RefundRequest(BaseModel):
+    reason: Optional[str] = "requested_by_customer"
+
+@api_router.post("/admin/orders/{order_id}/refund")
+async def refund_order(order_id: str, req: RefundRequest, request: Request):
+    import stripe as stripe_lib
+    stripe_lib.api_key = os.environ.get("STRIPE_API_KEY")
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("status") == "refunded":
+        raise HTTPException(status_code=400, detail="Order already refunded")
+    if order.get("payment_method") == "paypal":
+        raise HTTPException(status_code=400, detail="PayPal refunds must be processed via PayPal dashboard")
+
+    stripe_session = stripe_lib.checkout.Session.retrieve(order["session_id"])
+    refund = stripe_lib.Refund.create(
+        payment_intent=stripe_session.payment_intent,
+        reason=req.reason,
+    )
+
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "status": "refunded",
+            "refund_id": refund.id,
+            "refunded_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    return {"refund_id": refund.id, "status": refund.status, "amount": refund.amount}
+
 # ─── SEED DATA ───
 SEED_PRODUCTS = [
     {
