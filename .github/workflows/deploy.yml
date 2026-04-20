@@ -1,0 +1,64 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+        working-directory: backend
+      - run: python backend_test.py
+        env:
+          MONGO_URL: mongodb://localhost:27017
+          DB_NAME: vivalusa_test
+          JWT_SECRET: test-jwt-secret-ci
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD_TEST }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_TEST_KEY }}
+          CORS_ORIGINS: http://localhost:3000
+          ENVIRONMENT: development
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - run: yarn install --frozen-lockfile
+        working-directory: frontend
+      - run: yarn build
+        working-directory: frontend
+        env:
+          REACT_APP_BACKEND_URL: https://api.vivalusa.com
+
+  deploy:
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: railwayapp/railway-deploy@v2
+        with:
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+          service: backend
