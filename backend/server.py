@@ -20,6 +20,7 @@ import secrets
 from bson import ObjectId
 import requests as http_requests
 import time
+import json
 import pyotp
 import qrcode
 import io
@@ -31,7 +32,23 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+import sentry_sdk
+if os.environ.get("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=0.1,
+        environment=os.environ.get("ENVIRONMENT", "development"),
+    )
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 app = FastAPI()
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -51,7 +68,19 @@ api_router = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+class _JSONFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            **({"exc_info": self.formatException(record.exc_info)} if record.exc_info else {}),
+        })
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_JSONFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[_handler], force=True)
 logger = logging.getLogger(__name__)
 
 IS_PRODUCTION = os.environ.get("ENVIRONMENT", "development").lower() == "production"
@@ -205,7 +234,8 @@ class OrderItem(BaseModel):
 
 # ─── AUTH ROUTES ───
 @api_router.post("/auth/register")
-async def register(req: RegisterRequest, response: Response):
+@limiter.limit("5/minute")
+async def register(req: RegisterRequest, response: Response, request: Request):
     email = req.email.lower().strip()
     existing = await db.users.find_one({"email": email})
     if existing:
@@ -568,6 +598,7 @@ async def get_shipping_countries():
 
 # ─── IMAGE UPLOAD ───
 @api_router.post("/upload/image")
+@limiter.limit("20/minute")
 async def upload_image(request: Request, file: UploadFile = File(...)):
     user = await get_current_user(request)
     if user.get("role") != "admin":
@@ -704,6 +735,7 @@ def send_order_confirmation(order: dict, email: str):
 
 # ─── CHECKOUT / STRIPE ───
 @api_router.post("/checkout/session")
+@limiter.limit("10/minute")
 async def create_checkout_session(req: CheckoutRequest, request: Request):
     import stripe as stripe_lib
     stripe_lib.api_key = os.environ.get("STRIPE_API_KEY")
