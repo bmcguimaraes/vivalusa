@@ -878,7 +878,12 @@ SEED_PRODUCTS = [
 
 async def seed_admin():
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@vivalusa.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "VivaLusa2024!")
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if not admin_password:
+        raise RuntimeError(
+            "ADMIN_PASSWORD env var is required. "
+            "Set a strong password (min 16 chars) before starting the server."
+        )
     existing = await db.users.find_one({"email": admin_email})
     if existing is None:
         await db.users.insert_one({
@@ -917,17 +922,6 @@ async def startup():
         logger.info("Object storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
-    # Write test credentials
-    creds_dir = Path("/app/memory")
-    creds_dir.mkdir(exist_ok=True)
-    creds_file = creds_dir / "test_credentials.md"
-    creds_file.write_text(
-        f"# Test Credentials\n\n"
-        f"## Admin\n- Email: {os.environ.get('ADMIN_EMAIL', 'admin@vivalusa.com')}\n"
-        f"- Password: {os.environ.get('ADMIN_PASSWORD', 'VivaLusa2024!')}\n- Role: admin\n\n"
-        f"## Auth Endpoints\n- POST /api/auth/register\n- POST /api/auth/login\n"
-        f"- POST /api/auth/logout\n- GET /api/auth/me\n- POST /api/auth/refresh\n"
-    )
 
 app.include_router(api_router)
 

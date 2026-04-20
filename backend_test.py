@@ -4,6 +4,7 @@ VivaLusa E-commerce Backend API Testing
 Tests all backend endpoints for the cosmetic products website
 """
 
+import os
 import requests
 import sys
 import json
@@ -101,7 +102,7 @@ class VivaLusaAPITester:
         # Test admin login
         admin_data = {
             "email": "admin@vivalusa.com",
-            "password": "VivaLusa2024!"
+            "password": os.environ["ADMIN_PASSWORD"]
         }
         success, response = self.test_api_endpoint('POST', 'auth/login', 200, admin_data)
         if success:
