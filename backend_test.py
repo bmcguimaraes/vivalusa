@@ -11,7 +11,8 @@ import json
 from datetime import datetime
 
 class VivaLusaAPITester:
-    def __init__(self, base_url="https://beauty-checkout-12.preview.emergentagent.com"):
+    def __init__(self, base_url=None):
+        base_url = base_url or os.environ.get("TEST_BASE_URL", "http://localhost:8000")
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.session = requests.Session()
