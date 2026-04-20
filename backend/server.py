@@ -645,6 +645,150 @@ async def stripe_webhook(request: Request):
         logger.error(f"Webhook error: {e}")
         return {"status": "error"}
 
+# ─── PAYPAL ───
+PAYPAL_BASE = "https://api-m.sandbox.paypal.com" if os.environ.get("PAYPAL_MODE") == "sandbox" else "https://api-m.paypal.com"
+
+async def get_paypal_token():
+    client_id = os.environ.get("PAYPAL_CLIENT_ID")
+    secret = os.environ.get("PAYPAL_SECRET")
+    if not client_id or not secret:
+        raise HTTPException(status_code=500, detail="PayPal not configured")
+    resp = http_requests.post(
+        f"{PAYPAL_BASE}/v1/oauth2/token",
+        headers={"Accept": "application/json"},
+        data={"grant_type": "client_credentials"},
+        auth=(client_id, secret),
+        timeout=15
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+class PayPalCheckoutRequest(BaseModel):
+    items: List[Dict]
+    shipping_address: Dict
+    origin_url: str
+    guest_email: Optional[str] = None
+
+@api_router.post("/paypal/create-order")
+async def paypal_create_order(req: PayPalCheckoutRequest, request: Request):
+    user = await get_optional_user(request)
+
+    # Validate items and calculate total from DB (prevent price manipulation)
+    cart_items = []
+    total = 0.0
+    for item in req.items:
+        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
+        if not product:
+            raise HTTPException(status_code=400, detail=f"Product {item['product_id']} not found")
+        qty = int(item.get("quantity", 1))
+        cart_items.append({
+            "product_id": product["id"], "name": product["name"],
+            "price": product["price"], "quantity": qty, "image_url": product.get("image_url", "")
+        })
+        total += product["price"] * qty
+
+    discount = 0.0
+    if user:
+        discount = round(total * 0.05, 2)
+        total = round(total - discount, 2)
+
+    # Shipping
+    country = req.shipping_address.get("country", "").lower().strip()
+    zone_info = SHIPPING_ZONES.get(country, {"cost": 14.99})
+    shipping_cost = zone_info["cost"]
+    final_total = round(total + shipping_cost, 2)
+
+    token = await get_paypal_token()
+    order_body = {
+        "intent": "CAPTURE",
+        "purchase_units": [{
+            "amount": {
+                "currency_code": "EUR",
+                "value": f"{final_total:.2f}",
+                "breakdown": {
+                    "item_total": {"currency_code": "EUR", "value": f"{round(total, 2):.2f}"},
+                    "shipping": {"currency_code": "EUR", "value": f"{shipping_cost:.2f}"}
+                }
+            }
+        }],
+        "application_context": {
+            "return_url": f"{req.origin_url}/payment/success?paypal=true",
+            "cancel_url": f"{req.origin_url}/cart",
+            "brand_name": "VivaLusa",
+            "shipping_preference": "NO_SHIPPING"
+        }
+    }
+
+    resp = http_requests.post(
+        f"{PAYPAL_BASE}/v2/checkout/orders",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json=order_body, timeout=15
+    )
+    resp.raise_for_status()
+    paypal_order = resp.json()
+
+    # Save transaction
+    transaction = {
+        "id": str(uuid.uuid4()),
+        "session_id": paypal_order["id"],
+        "payment_method": "paypal",
+        "user_id": user["_id"] if user else None,
+        "guest_email": req.guest_email if not user else None,
+        "items": cart_items,
+        "subtotal": round(total + discount, 2),
+        "discount": discount,
+        "shipping_cost": shipping_cost,
+        "total": final_total,
+        "shipping_address": req.shipping_address,
+        "payment_status": "pending",
+        "status": "initiated",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.payment_transactions.insert_one(transaction)
+
+    # Find the approval URL
+    approve_url = next((l["href"] for l in paypal_order.get("links", []) if l["rel"] == "approve"), None)
+    return {"order_id": paypal_order["id"], "approve_url": approve_url}
+
+@api_router.post("/paypal/capture-order/{order_id}")
+async def paypal_capture_order(order_id: str, request: Request):
+    token = await get_paypal_token()
+    resp = http_requests.post(
+        f"{PAYPAL_BASE}/v2/checkout/orders/{order_id}/capture",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        timeout=15
+    )
+    resp.raise_for_status()
+    capture = resp.json()
+
+    status = capture.get("status", "")
+    if status == "COMPLETED":
+        tx = await db.payment_transactions.find_one({"session_id": order_id}, {"_id": 0})
+        if tx and tx.get("payment_status") != "paid":
+            await db.payment_transactions.update_one(
+                {"session_id": order_id},
+                {"$set": {"payment_status": "paid", "status": "completed"}}
+            )
+            order_doc = {
+                "id": str(uuid.uuid4()), "session_id": order_id,
+                "user_id": tx.get("user_id"), "guest_email": tx.get("guest_email"),
+                "items": tx.get("items", []), "subtotal": tx.get("subtotal", 0),
+                "discount": tx.get("discount", 0), "shipping_cost": tx.get("shipping_cost", 0),
+                "total": tx.get("total", 0), "shipping_address": tx.get("shipping_address", {}),
+                "payment_method": "paypal", "status": "confirmed",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.orders.insert_one(order_doc)
+
+    return {"status": status, "order_id": order_id}
+
+@api_router.get("/paypal/client-id")
+async def get_paypal_client_id():
+    client_id = os.environ.get("PAYPAL_CLIENT_ID")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="PayPal not configured")
+    return {"client_id": client_id}
+
 # ─── ORDERS ───
 @api_router.get("/orders")
 async def get_orders(request: Request):
