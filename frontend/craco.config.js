@@ -33,6 +33,10 @@ let webpackConfig = {
       '@': path.resolve(__dirname, 'src'),
     },
     configure: (webpackConfig) => {
+      // ForkTsCheckerWebpackPlugin is incompatible with Node 22+; remove it
+      webpackConfig.plugins = webpackConfig.plugins.filter(
+        (p) => p.constructor && p.constructor.name !== "ForkTsCheckerWebpackPlugin"
+      );
 
       // Add ignored patterns to reduce watched directories
         webpackConfig.watchOptions = {

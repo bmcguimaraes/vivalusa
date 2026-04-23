@@ -7,7 +7,100 @@ import ProductRow from '@/components/ProductRow';
 import { useAuth } from '@/contexts/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-const HERO_BG = "https://static.prod-images.emergentagent.com/jobs/a578c59c-55b8-40a0-b078-ec23d806778b/images/7d357cbadf6daad38e379851ca6a35c23910c79dbcb9e007c4fb08f0c057c427.png";
+const HERO_BG = "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=1920&q=85&auto=format&fit=crop";
+
+const DEMO_PRODUCTS = [
+  {
+    id: "prod-001",
+    name: "Radiance Gold Serum",
+    description: "A luxurious 24K gold-infused face serum that delivers deep hydration and a luminous glow. Enriched with hyaluronic acid and vitamin C for visibly brighter, firmer skin.",
+    price: 89.00,
+    category: "Skincare",
+    image_url: "https://images.unsplash.com/photo-1765053534710-2409e33e65b4?w=600&q=85&auto=format&fit=crop",
+    stock: 50,
+    featured: true,
+  },
+  {
+    id: "prod-002",
+    name: "Noir Velvet Lipstick",
+    description: "An ultra-pigmented matte lipstick with a velvety smooth finish. Long-lasting wear with a deep, sultry burgundy shade that complements every skin tone.",
+    price: 42.00,
+    category: "Makeup",
+    image_url: "https://images.unsplash.com/photo-1590785069862-343f908422d7?w=600&q=85&auto=format&fit=crop",
+    stock: 120,
+    featured: true,
+  },
+  {
+    id: "prod-003",
+    name: "Essence de Lusa",
+    description: "A captivating signature fragrance blending warm amber, jasmine, and sandalwood. Inspired by golden Portuguese sunsets, this eau de parfum lingers beautifully all day.",
+    price: 125.00,
+    category: "Fragrance",
+    image_url: "https://images.unsplash.com/photo-1774682060992-46c7e9f2e50b?w=600&q=85&auto=format&fit=crop",
+    stock: 35,
+    featured: true,
+  },
+  {
+    id: "prod-004",
+    name: "Midnight Eye Palette",
+    description: "12 richly pigmented eyeshadow shades from shimmering golds to deep smoky blacks. Buildable, blendable, and designed for dramatic evening looks.",
+    price: 58.00,
+    category: "Makeup",
+    image_url: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=600&q=85&auto=format&fit=crop",
+    stock: 80,
+    featured: false,
+  },
+  {
+    id: "prod-005",
+    name: "Golden Hour Moisturizer",
+    description: "A rich, nourishing moisturizer infused with argan oil and shea butter. Delivers 72-hour hydration with a subtle golden shimmer for a dewy, radiant finish.",
+    price: 65.00,
+    category: "Skincare",
+    image_url: "https://images.unsplash.com/photo-1775255487971-af15499994b1?w=600&q=85&auto=format&fit=crop",
+    stock: 65,
+    featured: false,
+  },
+  {
+    id: "prod-006",
+    name: "Lusitano Cologne",
+    description: "A fresh, invigorating cologne with notes of bergamot, sea salt, and cedarwood. The perfect everyday scent that transitions seamlessly from day to night.",
+    price: 95.00,
+    category: "Fragrance",
+    image_url: "https://images.unsplash.com/photo-1541643600914-78b084683702?w=600&q=85&auto=format&fit=crop",
+    stock: 45,
+    featured: false,
+  },
+  {
+    id: "prod-007",
+    name: "Black Pearl Cleanser",
+    description: "A gentle yet deeply purifying foam cleanser with activated charcoal and pearl extract. Removes impurities without stripping the skin's natural moisture barrier.",
+    price: 38.00,
+    category: "Skincare",
+    image_url: "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=600&q=85&auto=format&fit=crop",
+    stock: 90,
+    featured: false,
+  },
+  {
+    id: "prod-008",
+    name: "Sculpt & Define Palette",
+    description: "A contour and highlight palette with six perfectly curated shades. Buildable pigment for a natural everyday look or a full sculpted finish.",
+    price: 52.00,
+    category: "Makeup",
+    image_url: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600&q=85&auto=format&fit=crop",
+    stock: 60,
+    featured: false,
+  },
+  {
+    id: "prod-009",
+    name: "Rose Oud Elixir",
+    description: "An opulent unisex fragrance weaving Bulgarian rose, oud wood, and musk. A statement scent for those who command presence.",
+    price: 155.00,
+    category: "Fragrance",
+    image_url: "https://images.unsplash.com/photo-1547887538-047f0f5d5e01?w=600&q=85&auto=format&fit=crop",
+    stock: 25,
+    featured: true,
+  },
+];
 const LIFESTYLE_IMG = "https://images.unsplash.com/photo-1775900047812-0d0b2f02e049?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwzfHx3b21hbiUyMGFwcGx5aW5nJTIwbWFrZXVwJTIwY2luZW1hdGljJTIwZGFya3xlbnwwfHx8fDE3NzYzNDM0OTR8MA&ixlib=rb-4.1.0&q=85";
 
 export default function Home() {
@@ -27,7 +120,8 @@ export default function Home() {
         setProducts(prodRes.data);
         setCategories(catRes.data);
       } catch (err) {
-        console.error('Failed to load products:', err);
+        setProducts(DEMO_PRODUCTS);
+        setCategories([...new Set(DEMO_PRODUCTS.map(p => p.category))]);
       } finally {
         setLoading(false);
       }

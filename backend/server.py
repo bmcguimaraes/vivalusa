@@ -1146,7 +1146,7 @@ SEED_PRODUCTS = [
         "description": "12 richly pigmented eyeshadow shades from shimmering golds to deep smoky blacks. Buildable, blendable, and designed for dramatic evening looks.",
         "price": 58.00,
         "category": "Makeup",
-        "image_url": "https://static.prod-images.emergentagent.com/jobs/a578c59c-55b8-40a0-b078-ec23d806778b/images/c55838c1ac0813ef7c6837a40e93a2c7c82d59810c8cd6fde36227eab2e17856.png",
+        "image_url": "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=600&q=85&auto=format&fit=crop",
         "stock": 80,
         "featured": False,
         "created_at": datetime.now(timezone.utc).isoformat()
