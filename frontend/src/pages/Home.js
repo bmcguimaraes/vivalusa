@@ -117,8 +117,10 @@ export default function Home() {
           axios.get(`${API}/products`),
           axios.get(`${API}/products/categories`)
         ]);
-        setProducts(prodRes.data);
-        setCategories(catRes.data);
+        const prods = Array.isArray(prodRes.data) && prodRes.data.length > 0 ? prodRes.data : DEMO_PRODUCTS;
+        const cats = Array.isArray(catRes.data) && catRes.data.length > 0 ? catRes.data : [...new Set(prods.map(p => p.category))];
+        setProducts(prods);
+        setCategories(cats);
       } catch (err) {
         setProducts(DEMO_PRODUCTS);
         setCategories([...new Set(DEMO_PRODUCTS.map(p => p.category))]);
