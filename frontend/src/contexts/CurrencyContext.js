@@ -19,7 +19,7 @@ export function CurrencyProvider({ children }) {
 
   useEffect(() => {
     axios.get(`${API}/currency/rates`)
-      .then(res => setRates(res.data.rates))
+      .then(res => { if (res.data?.rates && typeof res.data.rates === 'object') setRates(res.data.rates); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
