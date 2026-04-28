@@ -182,8 +182,9 @@ async def get_optional_user(request: Request) -> Optional[dict]:
         return None
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=IS_PRODUCTION, samesite="lax", max_age=3600, path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=IS_PRODUCTION, samesite="lax", max_age=604800, path="/")
+    samesite = "none" if IS_PRODUCTION else "lax"
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=IS_PRODUCTION, samesite=samesite, max_age=3600, path="/")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=IS_PRODUCTION, samesite=samesite, max_age=604800, path="/")
 
 # ─── Pydantic Models ───
 class RegisterRequest(BaseModel):
@@ -299,7 +300,7 @@ async def login(req: LoginRequest, response: Response, request: Request):
             }
             pending_token = jwt.encode(pending_payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
             response.set_cookie(key="2fa_pending", value=pending_token, httponly=True,
-                                secure=IS_PRODUCTION, samesite="lax", max_age=300, path="/")
+                                secure=IS_PRODUCTION, samesite="none" if IS_PRODUCTION else "lax", max_age=300, path="/")
             return {"requires_2fa": True}
 
     user_id = str(user["_id"])
@@ -333,7 +334,7 @@ async def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="User not found")
         user_id = str(user["_id"])
         access_token = create_access_token(user_id, user["email"])
-        response.set_cookie(key="access_token", value=access_token, httponly=True, secure=IS_PRODUCTION, samesite="lax", max_age=3600, path="/")
+        response.set_cookie(key="access_token", value=access_token, httponly=True, secure=IS_PRODUCTION, samesite="none" if IS_PRODUCTION else "lax", max_age=3600, path="/")
         return {"message": "Token refreshed"}
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
@@ -424,7 +425,7 @@ async def totp_verify(req: TotpCodeRequest, request: Request, response: Response
         "expires_at": datetime.now(timezone.utc) + timedelta(days=30)
     })
     response.set_cookie(key="vl_2fa_trust", value=trust_token, httponly=True,
-                        secure=IS_PRODUCTION, samesite="lax", max_age=2592000, path="/")
+                        secure=IS_PRODUCTION, samesite="none" if IS_PRODUCTION else "lax", max_age=2592000, path="/")
     return {"id": user_id, "name": user.get("name"), "email": user["email"], "role": user.get("role", "admin")}
 
 @api_router.post("/admin/2fa/backup-codes/regenerate")
