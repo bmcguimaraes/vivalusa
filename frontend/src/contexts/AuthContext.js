@@ -4,6 +4,15 @@ import axios from 'axios';
 const AuthContext = createContext(null);
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const TOKEN_KEY = 'vivalusa_token';
+
+function setAxiosToken(token) {
+  if (token) {
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete axios.defaults.headers.common['Authorization'];
+  }
+}
 
 function formatApiErrorDetail(detail) {
   if (detail == null) return "Something went wrong. Please try again.";
@@ -20,11 +29,15 @@ export function AuthProvider({ children }) {
   const [pendingTwoFA, setPendingTwoFA] = useState(false);
 
   const checkAuth = useCallback(async () => {
+    const stored = localStorage.getItem(TOKEN_KEY);
+    if (stored) setAxiosToken(stored);
     try {
       const { data } = await axios.get(`${API}/auth/me`, { withCredentials: true });
       setUser(data);
     } catch {
       setUser(false);
+      localStorage.removeItem(TOKEN_KEY);
+      setAxiosToken(null);
     } finally {
       setLoading(false);
     }
@@ -38,6 +51,10 @@ export function AuthProvider({ children }) {
       if (data.requires_2fa) {
         setPendingTwoFA(true);
         return { success: false, requires_2fa: true };
+      }
+      if (data.access_token) {
+        localStorage.setItem(TOKEN_KEY, data.access_token);
+        setAxiosToken(data.access_token);
       }
       setUser(data);
       return { success: true };
@@ -60,6 +77,10 @@ export function AuthProvider({ children }) {
   const register = async (name, email, password) => {
     try {
       const { data } = await axios.post(`${API}/auth/register`, { name, email, password }, { withCredentials: true });
+      if (data.access_token) {
+        localStorage.setItem(TOKEN_KEY, data.access_token);
+        setAxiosToken(data.access_token);
+      }
       setUser(data);
       return { success: true };
     } catch (e) {
@@ -71,6 +92,8 @@ export function AuthProvider({ children }) {
     try {
       await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
     } catch { /* ignore */ }
+    localStorage.removeItem(TOKEN_KEY);
+    setAxiosToken(null);
     setUser(false);
     setPendingTwoFA(false);
   };
