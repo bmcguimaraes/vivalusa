@@ -213,6 +213,11 @@ export default function Home() {
       <footer data-testid="footer" className="border-t border-[#27272A] py-8 sm:py-12 px-6 sm:px-12">
         <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <span className="font-heading text-lg text-[#D4AF37]">VivaLusa</span>
+          <div className="flex flex-wrap justify-center gap-4 text-xs font-body text-[#A1A1AA]">
+            <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+            <a href="/terms" className="hover:text-white transition-colors">Terms of Service</a>
+            <a href="/refund-policy" className="hover:text-white transition-colors">Refund Policy</a>
+          </div>
           <p className="font-body text-xs text-[#A1A1AA]">&copy; {new Date().getFullYear()} VivaLusa. All rights reserved.</p>
         </div>
       </footer>
