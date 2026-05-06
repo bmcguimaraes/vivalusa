@@ -15,6 +15,9 @@ import Checkout from "@/pages/Checkout";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import Admin from "@/pages/Admin";
 import Orders from "@/pages/Orders";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsOfService from "@/pages/TermsOfService";
+import RefundPolicy from "@/pages/RefundPolicy";
 
 const POSTHOG_KEY = "phc_xAvL2Iq4tFmANRE7kzbKwaSqp1HJjN7x48s3vr0CMjs";
 const POSTHOG_HOST = "https://us.i.posthog.com";
@@ -68,6 +71,9 @@ function App() {
                 <Route path="/payment/success" element={<PaymentSuccess />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/refund-policy" element={<RefundPolicy />} />
               </Routes>
             </div>
             <Toaster richColors position="bottom-right" />
