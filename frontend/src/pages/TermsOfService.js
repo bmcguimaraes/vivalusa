@@ -99,7 +99,7 @@ export default function TermsOfService() {
           <section>
             <h2 className="font-heading text-lg text-white mb-3">11. Contact</h2>
             <p>
-              For any questions regarding these terms, contact us at <a href="mailto:support@vivalusa.com" className="text-[#D4AF37] hover:underline">support@vivalusa.com</a>.
+              For any questions regarding these terms, contact us at <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a>.
             </p>
           </section>
 

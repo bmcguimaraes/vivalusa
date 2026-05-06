@@ -25,7 +25,7 @@ export default function PrivacyPolicy() {
             <p>
               VivaLusa is a luxury cosmetics brand operated from Sanguedo, Portugal. For the purposes of the General Data Protection Regulation (GDPR), VivaLusa is the data controller of your personal information.
             </p>
-            <p className="mt-2">Contact: <a href="mailto:privacy@vivalusa.com" className="text-[#D4AF37] hover:underline">privacy@vivalusa.com</a></p>
+            <p className="mt-2">Contact: <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a></p>
           </section>
 
           <section>
@@ -91,7 +91,7 @@ export default function PrivacyPolicy() {
               <li>Withdraw consent at any time (for analytics)</li>
               <li>Lodge a complaint with the CNPD (Portuguese data protection authority)</li>
             </ul>
-            <p className="mt-2">To exercise any of these rights, email us at <a href="mailto:privacy@vivalusa.com" className="text-[#D4AF37] hover:underline">privacy@vivalusa.com</a>.</p>
+            <p className="mt-2">To exercise any of these rights, email us at <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a>.</p>
           </section>
 
           <section>

@@ -23,7 +23,7 @@ export default function RefundPolicy() {
           <section>
             <h2 className="font-heading text-lg text-white mb-3">1. Your Right to Cancel (EU Consumers)</h2>
             <p>
-              Under EU consumer law (Directive 2011/83/EU), you have the right to cancel your order within <span className="text-white font-medium">14 days</span> of receiving your goods, without giving any reason. To exercise this right, contact us at <a href="mailto:support@vivalusa.com" className="text-[#D4AF37] hover:underline">support@vivalusa.com</a> before the 14-day period expires.
+              Under EU consumer law (Directive 2011/83/EU), you have the right to cancel your order within <span className="text-white font-medium">14 days</span> of receiving your goods, without giving any reason. To exercise this right, contact us at <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a> before the 14-day period expires.
             </p>
           </section>
 
@@ -43,14 +43,14 @@ export default function RefundPolicy() {
           <section>
             <h2 className="font-heading text-lg text-white mb-3">3. Faulty or Damaged Items</h2>
             <p>
-              If you receive a product that is damaged, defective, or incorrect, please contact us within <span className="text-white font-medium">48 hours</span> of delivery at <a href="mailto:support@vivalusa.com" className="text-[#D4AF37] hover:underline">support@vivalusa.com</a> with a photo of the issue. We will arrange a replacement or full refund at no cost to you, including return shipping.
+              If you receive a product that is damaged, defective, or incorrect, please contact us within <span className="text-white font-medium">48 hours</span> of delivery at <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a> with a photo of the issue. We will arrange a replacement or full refund at no cost to you, including return shipping.
             </p>
           </section>
 
           <section>
             <h2 className="font-heading text-lg text-white mb-3">4. How to Return an Item</h2>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Email <a href="mailto:support@vivalusa.com" className="text-[#D4AF37] hover:underline">support@vivalusa.com</a> with your order number and reason for return</li>
+              <li>Email <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a> with your order number and reason for return</li>
               <li>We will reply within 2 business days with return instructions</li>
               <li>Pack the item securely in its original packaging</li>
               <li>Ship to the address provided — we recommend using a tracked service</li>
@@ -77,7 +77,7 @@ export default function RefundPolicy() {
           <section>
             <h2 className="font-heading text-lg text-white mb-3">7. Contact</h2>
             <p>
-              For any questions about returns or refunds, email us at <a href="mailto:support@vivalusa.com" className="text-[#D4AF37] hover:underline">support@vivalusa.com</a>. We aim to respond within 2 business days.
+              For any questions about returns or refunds, email us at <a href="mailto:bxamazon123@gmail.com" className="text-[#D4AF37] hover:underline">bxamazon123@gmail.com</a>. We aim to respond within 2 business days.
             </p>
           </section>
 
